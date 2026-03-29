@@ -1,0 +1,58 @@
+name = "webwaka-institutional"
+main = "src/worker.ts"
+compatibility_date = "2024-07-25"
+compatibility_flags = ["nodejs_compat"]
+
+# ─── Staging Environment ──────────────────────────────────────────────────────
+[env.staging]
+name = "webwaka-institutional-staging"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "webwaka-institutional-db-staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"
+
+[[env.staging.kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "REPLACE_WITH_STAGING_SESSIONS_KV_ID"
+
+[[env.staging.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "REPLACE_WITH_STAGING_RATE_LIMIT_KV_ID"
+
+[[env.staging.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "webwaka-institutional-media-staging"
+
+[env.staging.vars]
+ENVIRONMENT = "staging"
+
+# ─── Production Environment ───────────────────────────────────────────────────
+[env.production]
+name = "webwaka-institutional-production"
+
+[[env.production.d1_databases]]
+binding = "DB"
+database_name = "webwaka-institutional-db-production"
+database_id = "REPLACE_WITH_PRODUCTION_D1_ID"
+
+[[env.production.kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "REPLACE_WITH_PRODUCTION_SESSIONS_KV_ID"
+
+[[env.production.kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "REPLACE_WITH_PRODUCTION_RATE_LIMIT_KV_ID"
+
+[[env.production.r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "webwaka-institutional-media-production"
+
+[env.production.vars]
+ENVIRONMENT = "production"
+
+# ─── Secrets (set via: wrangler secret put <KEY> --env <staging|production>) ──
+# JWT_SECRET
+# PAYSTACK_SECRET_KEY
+# OPENROUTER_API_KEY
+# TERMII_API_KEY

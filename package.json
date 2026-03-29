@@ -1,0 +1,28 @@
+{
+  "name": "@webwaka/fintech",
+  "version": "0.1.0",
+  "description": "WebWaka Fintech Suite — Banking, Insurance, and Investment on WebWaka OS v4",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy:staging": "wrangler deploy --env staging",
+    "deploy:production": "wrangler deploy --env production",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@webwaka/core": "github:WebWakaDOS/webwaka-core#main",
+    "hono": "^4.4.0",
+    "dexie": "^3.2.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20240725.0",
+    "@vitest/coverage-v8": "^3.2.4",
+    "typescript": "^5.5.3",
+    "vitest": "^3.2.4",
+    "wrangler": "^3.65.0"
+  }
+}
