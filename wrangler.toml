@@ -10,15 +10,15 @@ name = "webwaka-institutional-staging"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "webwaka-institutional-db-staging"
-database_id = "REPLACE_WITH_STAGING_D1_ID"
+database_id = "NEEDS_D1_UPGRADE"
 
 [[env.staging.kv_namespaces]]
 binding = "SESSIONS_KV"
-id = "REPLACE_WITH_STAGING_SESSIONS_KV_ID"
+id = "db725eade5d04c228c2bad04a2ff4f0f"
 
 [[env.staging.kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "REPLACE_WITH_STAGING_RATE_LIMIT_KV_ID"
+id = "f37ce1287e654d72b8030a010d10313f"
 
 [[env.staging.r2_buckets]]
 binding = "MEDIA_BUCKET"
@@ -34,15 +34,15 @@ name = "webwaka-institutional-production"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "webwaka-institutional-db-production"
-database_id = "REPLACE_WITH_PRODUCTION_D1_ID"
+database_id = "NEEDS_D1_UPGRADE"
 
 [[env.production.kv_namespaces]]
 binding = "SESSIONS_KV"
-id = "REPLACE_WITH_PRODUCTION_SESSIONS_KV_ID"
+id = "c83a742fe73e4abcb5be4615d8b676ba"
 
 [[env.production.kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "REPLACE_WITH_PRODUCTION_RATE_LIMIT_KV_ID"
+id = "05743085cdc44abaa8483af9f27e1ee6"
 
 [[env.production.r2_buckets]]
 binding = "MEDIA_BUCKET"
