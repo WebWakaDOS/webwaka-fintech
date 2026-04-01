@@ -3,6 +3,8 @@
  * All monetary values are in kobo (NGN × 100) — Invariant 5: Nigeria First
  */
 
+import type { AuthUser } from '@webwaka/core';
+
 export interface Bindings {
   DB: D1Database;
   SESSIONS_KV: KVNamespace;
@@ -14,6 +16,18 @@ export interface Bindings {
   OPENROUTER_API_KEY: string;
   TERMII_API_KEY: string;
 }
+
+/**
+ * Hono Variables — typed context values injected by jwtAuthMiddleware.
+ * Use with Hono<{ Bindings: Bindings; Variables: AppVariables }>.
+ */
+export interface AppVariables {
+  /** Authenticated user — set by jwtAuthMiddleware from @webwaka/core */
+  user: AuthUser;
+  /** Tenant ID — ALWAYS sourced from JWT payload, NEVER from headers */
+  tenantId: string;
+}
+
 
 export type AccountType = 'savings' | 'current' | 'corporate' | 'fixed_deposit';
 export type AccountStatus = 'active' | 'dormant' | 'frozen' | 'closed';

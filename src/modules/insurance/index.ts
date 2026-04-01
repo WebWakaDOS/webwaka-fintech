@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { requireRole } from '@webwaka/core';
-import type { Bindings } from '../../core/types';
+import type { Bindings, AppVariables } from '../../core/types';
 
-export const insuranceRouter = new Hono<{ Bindings: Bindings }>();
+export const insuranceRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
 insuranceRouter.get('/policies', requireRole(['admin', 'agent', 'customer']), async (c) => {
   const user = c.get('user');
@@ -12,7 +12,7 @@ insuranceRouter.get('/policies', requireRole(['admin', 'agent', 'customer']), as
     ? 'SELECT * FROM insurancePolicies WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
     : 'SELECT * FROM insurancePolicies WHERE tenantId = ? ORDER BY createdAt DESC';
     
-  const params = user.role === 'customer' ? [tenantId, user.id] : [tenantId];
+  const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query)
     .bind(...params)

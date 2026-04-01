@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { requireRole } from '@webwaka/core';
-import type { Bindings } from '../../core/types';
+import type { Bindings, AppVariables } from '../../core/types';
 
-export const investmentRouter = new Hono<{ Bindings: Bindings }>();
+export const investmentRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
 investmentRouter.get('/portfolios', requireRole(['admin', 'broker', 'customer']), async (c) => {
   const user = c.get('user');
@@ -12,7 +12,7 @@ investmentRouter.get('/portfolios', requireRole(['admin', 'broker', 'customer'])
     ? 'SELECT * FROM investmentPortfolios WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
     : 'SELECT * FROM investmentPortfolios WHERE tenantId = ? ORDER BY createdAt DESC';
     
-  const params = user.role === 'customer' ? [tenantId, user.id] : [tenantId];
+  const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query)
     .bind(...params)

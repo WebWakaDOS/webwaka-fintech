@@ -3,10 +3,10 @@
  *
  * Invariant 1: Build Once Use Infinitely
  * ALL auth primitives come from @webwaka/core.
- * NEVER re-implement validateJWT, requireRole, secureCORS, or rateLimit here.
+ * NEVER re-implement verifyJWT, requireRole, secureCORS, or rateLimit here.
  */
 export {
-  validateJWT,
+  verifyJWT,
   signJWT,
   requireRole,
   jwtAuthMiddleware,

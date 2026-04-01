@@ -38,7 +38,8 @@ export function formatCurrency(amountKobo: number, currency: string, locale: Sup
 }
 
 // Nigerian account types
-export const ACCOUNT_TYPE_LABELS: Record<string, Record<SupportedLocale, string>> = {
+// Use AccountType as key to enable exhaustive type-safe indexing (noUncheckedIndexedAccess)
+export const ACCOUNT_TYPE_LABELS: Record<'savings' | 'current' | 'corporate' | 'fixed_deposit', Record<SupportedLocale, string>> = {
   savings: {
     'en-NG': 'Savings Account', 'en-GH': 'Savings Account', 'en-KE': 'Savings Account',
     'en-ZA': 'Savings Account', 'fr-CI': 'Compte d\'Épargne', 'yo-NG': 'Akaunti Ifowopamọ', 'ha-NG': 'Asusun Ajiya',
@@ -58,7 +59,8 @@ export const ACCOUNT_TYPE_LABELS: Record<string, Record<SupportedLocale, string>
 };
 
 // Transaction types
-export const TRANSACTION_TYPE_LABELS: Record<string, Record<SupportedLocale, string>> = {
+// Use TransactionType subset as key to enable exhaustive type-safe indexing
+export const TRANSACTION_TYPE_LABELS: Record<'deposit' | 'withdrawal' | 'transfer', Record<SupportedLocale, string>> = {
   deposit: {
     'en-NG': 'Deposit', 'en-GH': 'Deposit', 'en-KE': 'Deposit',
     'en-ZA': 'Deposit', 'fr-CI': 'Dépôt', 'yo-NG': 'Idogo', 'ha-NG': 'Ajiya',

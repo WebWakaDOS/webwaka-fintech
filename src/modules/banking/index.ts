@@ -1,8 +1,8 @@
 import { Hono } from 'hono';
 import { requireRole } from '@webwaka/core';
-import type { Bindings } from '../../core/types';
+import type { Bindings, AppVariables } from '../../core/types';
 
-export const bankingRouter = new Hono<{ Bindings: Bindings }>();
+export const bankingRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
 // Invariant 1: Build Once Use Infinitely
 // Role-based access control via @webwaka/core primitives
@@ -16,7 +16,7 @@ bankingRouter.get('/accounts', requireRole(['admin', 'teller', 'customer']), asy
     ? 'SELECT * FROM bankAccounts WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
     : 'SELECT * FROM bankAccounts WHERE tenantId = ? ORDER BY createdAt DESC';
     
-  const params = user.role === 'customer' ? [tenantId, user.id] : [tenantId];
+  const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query)
     .bind(...params)
