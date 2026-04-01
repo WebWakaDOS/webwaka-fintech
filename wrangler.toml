@@ -10,7 +10,7 @@ name = "webwaka-institutional-staging"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "webwaka-institutional-db-staging"
-database_id = "NEEDS_D1_UPGRADE"
+database_id = "ee93377c-8000-45d6-ae54-f0d4c588bf04"
 
 [[env.staging.kv_namespaces]]
 binding = "SESSIONS_KV"
@@ -34,7 +34,7 @@ name = "webwaka-institutional-production"
 [[env.production.d1_databases]]
 binding = "DB"
 database_name = "webwaka-institutional-db-production"
-database_id = "NEEDS_D1_UPGRADE"
+database_id = "ee93377c-8000-45d6-ae54-f0d4c588bf04"
 
 [[env.production.kv_namespaces]]
 binding = "SESSIONS_KV"
