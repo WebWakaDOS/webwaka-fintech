@@ -1,11 +1,11 @@
-name = "webwaka-institutional"
+name = "webwaka-fintech"
 main = "src/worker.ts"
 compatibility_date = "2024-07-25"
 compatibility_flags = ["nodejs_compat"]
 
 # ─── Staging Environment ──────────────────────────────────────────────────────
 [env.staging]
-name = "webwaka-institutional-staging"
+name = "webwaka-fintech-staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
@@ -22,14 +22,14 @@ id = "f37ce1287e654d72b8030a010d10313f"
 
 [[env.staging.r2_buckets]]
 binding = "MEDIA_BUCKET"
-bucket_name = "webwaka-institutional-media-staging"
+bucket_name = "webwaka-fintech-docs-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
 
 # ─── Production Environment ───────────────────────────────────────────────────
 [env.production]
-name = "webwaka-institutional-production"
+name = "webwaka-fintech-production"
 
 [[env.production.d1_databases]]
 binding = "DB"
@@ -46,7 +46,7 @@ id = "05743085cdc44abaa8483af9f27e1ee6"
 
 [[env.production.r2_buckets]]
 binding = "MEDIA_BUCKET"
-bucket_name = "webwaka-institutional-media-production"
+bucket_name = "webwaka-fintech-docs-prod"
 
 [env.production.vars]
 ENVIRONMENT = "production"
