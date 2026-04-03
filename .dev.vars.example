@@ -1,0 +1,33 @@
+# .dev.vars.example — Local development environment variables for Wrangler
+#
+# Copy this file to .dev.vars and fill in real values for local testing.
+# NEVER commit .dev.vars — it is gitignored.
+#
+# Usage: wrangler dev reads .dev.vars automatically.
+
+# ─── Core Auth ────────────────────────────────────────────────────────────────
+JWT_SECRET=dev-jwt-secret-change-in-production
+
+# ─── Paystack (for account funding) ──────────────────────────────────────────
+PAYSTACK_SECRET_KEY=sk_test_REPLACE_WITH_YOUR_PAYSTACK_TEST_KEY
+
+# ─── OpenRouter (AI/credit scoring) ──────────────────────────────────────────
+OPENROUTER_API_KEY=REPLACE_WITH_YOUR_OPENROUTER_KEY
+
+# ─── Termii (SMS OTP) ─────────────────────────────────────────────────────────
+TERMII_API_KEY=REPLACE_WITH_YOUR_TERMII_KEY
+
+# ─── NIBSS NIP (instant bank transfers) ───────────────────────────────────────
+# Obtain from your licensed NIBSS bank partner (e.g. Stanbic IBTC, GTB, Sterling)
+NIBSS_BASE_URL=https://sandbox.your-bank-partner.com/nibss
+NIBSS_CLIENT_ID=REPLACE_WITH_BANK_PARTNER_CLIENT_ID
+NIBSS_CLIENT_SECRET=REPLACE_WITH_BANK_PARTNER_CLIENT_SECRET
+# CBN bank code of YOUR institution (not the destination bank)
+NIBSS_SOURCE_BANK_CODE=000001
+# The clearing account at the bank partner from which NIP transfers are funded
+NIBSS_SOURCE_ACCOUNT_NUMBER=0000000000
+
+# ─── Event Bus (cross-repo events) ────────────────────────────────────────────
+# Optional — events are silently skipped if these are not set.
+EVENT_BUS_URL=
+EVENT_BUS_SECRET=

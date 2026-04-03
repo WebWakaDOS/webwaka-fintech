@@ -195,14 +195,17 @@ function makePreparedStmt(firstResult: unknown = null, allResult: unknown[] = []
   return stmt;
 }
 
-/** Build a minimal mock Cloudflare env for testing */
+/** Build a minimal mock Cloudflare env for testing.
+ * NIBSS_CLIENT_SECRET defaults to empty string (dev mode — no webhook sig required).
+ * Tests that verify signature enforcement must override with a non-empty secret.
+ */
 function mockEnv(overrides: Partial<Record<string, unknown>> = {}): Record<string, unknown> {
   const dbStmt = makePreparedStmt();
   return {
     DB: { prepare: vi.fn().mockReturnValue(dbStmt) },
     NIBSS_BASE_URL: 'https://nibss.test',
     NIBSS_CLIENT_ID: 'client-id',
-    NIBSS_CLIENT_SECRET: 'client-secret',
+    NIBSS_CLIENT_SECRET: '', // empty = signature verification skipped (dev mode)
     NIBSS_SOURCE_BANK_CODE: '000001',
     NIBSS_SOURCE_ACCOUNT_NUMBER: '1234567890',
     EVENT_BUS_URL: undefined,
@@ -680,6 +683,24 @@ describe('POST /webhooks/nibss-nip (webhook handler)', () => {
     expect(res.status).toBe(400);
   });
 
+  it('returns 401 when secret is configured and X-Webhook-Signature header is absent', async () => {
+    // Security fix: omitting the header must NOT bypass verification
+    const env = mockEnv({ NIBSS_CLIENT_SECRET: 'my-secret' });
+
+    const payload = { paymentReference: 'NIP-test', status: 'successful' };
+    const res = await payoutsWebhookRouter.fetch(
+      new Request('http://localhost/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, // no X-Webhook-Signature
+        body: JSON.stringify(payload),
+      }),
+      env
+    );
+    expect(res.status).toBe(401);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('Missing signature');
+  });
+
   it('returns 401 for invalid HMAC signature when secret is set', async () => {
     const env = mockEnv({ NIBSS_CLIENT_SECRET: 'my-secret' });
 
@@ -704,6 +725,36 @@ describe('POST /webhooks/nibss-nip (webhook handler)', () => {
       env
     );
     expect(res.status).toBe(401);
+    const body = await res.json() as { error: string };
+    expect(body.error).toBe('Invalid signature');
+  });
+
+  it('allows webhook without signature when NIBSS_CLIENT_SECRET is not configured (dev mode)', async () => {
+    // When no secret is configured, signature verification is skipped (local dev)
+    const dbStmt = makePreparedStmt(null); // unknown reference → received:true
+    const env = mockEnv({
+      DB: { prepare: vi.fn().mockReturnValue(dbStmt) },
+      NIBSS_CLIENT_SECRET: '', // not configured
+    });
+
+    const payload = {
+      paymentReference: 'NIP-dev-test',
+      sessionId: 'sess-dev',
+      status: 'successful',
+      settledAmountKobo: 100000,
+      responseCode: '00',
+      responseMessage: 'OK',
+      settledAt: new Date().toISOString(),
+    };
+    const res = await payoutsWebhookRouter.fetch(
+      new Request('http://localhost/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }),
+      env
+    );
+    expect(res.status).toBe(200); // passes through to unknown-ref handler
   });
 });
 

@@ -303,7 +303,13 @@ payoutsWebhookRouter.post('/', async (c) => {
   const signature = c.req.header('X-Webhook-Signature');
   const rawBody = await c.req.text();
 
-  if (c.env.NIBSS_CLIENT_SECRET && signature) {
+  // When NIBSS_CLIENT_SECRET is configured, signature verification is MANDATORY.
+  // Requests that omit the header are rejected — not silently passed through.
+  if (c.env.NIBSS_CLIENT_SECRET) {
+    if (!signature) {
+      console.warn('[Payouts] Webhook: missing X-Webhook-Signature header');
+      return c.json({ error: 'Missing signature' }, 401);
+    }
     const isValid = await verifyWebhookSignature(rawBody, signature, c.env.NIBSS_CLIENT_SECRET);
     if (!isValid) {
       console.warn('[Payouts] Webhook: invalid signature');

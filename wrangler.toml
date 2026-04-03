@@ -56,3 +56,14 @@ ENVIRONMENT = "production"
 # PAYSTACK_SECRET_KEY
 # OPENROUTER_API_KEY
 # TERMII_API_KEY
+#
+# ─── NIBSS NIP Secrets ────────────────────────────────────────────────────────
+# NIBSS_BASE_URL              — Bank partner NIP gateway base URL
+# NIBSS_CLIENT_ID             — Bank partner OAuth2 client ID
+# NIBSS_CLIENT_SECRET         — Bank partner OAuth2 client secret (also HMAC webhook key)
+# NIBSS_SOURCE_BANK_CODE      — CBN bank code of the sending institution (e.g. "000001")
+# NIBSS_SOURCE_ACCOUNT_NUMBER — Clearing account number held at the bank partner
+#
+# ─── Event Bus Secrets ────────────────────────────────────────────────────────
+# EVENT_BUS_URL               — WebWaka Event Bus URL (optional; events skipped if absent)
+# EVENT_BUS_SECRET            — Shared secret sent as X-Bus-Secret header (optional)
