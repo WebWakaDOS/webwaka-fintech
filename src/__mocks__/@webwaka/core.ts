@@ -28,7 +28,12 @@ export async function signJWT(payload: Omit<JWTPayload, 'iat' | 'exp'>, _secret:
 }
 
 export function requireRole(_allowedRoles: WebWakaRole[]) {
-  return async (_c: unknown, next: () => Promise<void>) => { await next(); };
+  return async (c: { set: (k: string, v: unknown) => void }, next: () => Promise<void>) => {
+    // Inject a default mock user so route handlers can call c.get('user')
+    c.set('user', { userId: 'user-test-123', tenantId: 'tenant-inst-123', role: 'admin' });
+    c.set('tenantId', 'tenant-inst-123');
+    await next();
+  };
 }
 
 export function jwtAuthMiddleware(_jwtSecret: string, _sessionsKV: unknown) {

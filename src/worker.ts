@@ -18,6 +18,7 @@ import type { Bindings, AppVariables } from './core/types';
 import { bankingRouter } from './modules/banking/index';
 import { insuranceRouter } from './modules/insurance/index';
 import { investmentRouter } from './modules/investment/index';
+import { payoutsRouter, payoutsWebhookRouter } from './modules/payouts/index';
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -39,10 +40,16 @@ app.use('/api/*', jwtAuthMiddleware());
 // ─── Health Check (unauthenticated) ──────────────────────────────────────────
 app.get('/health', (c) => c.json({ status: 'ok', service: 'webwaka-fintech', version: '0.1.0' }));
 
+// ─── NIBSS NIP Webhook (unauthenticated — HMAC-verified) ─────────────────────
+// Must be registered BEFORE the /api/* JWT middleware scope to avoid auth errors.
+// Bank partner posts settlement confirmations here.
+app.route('/webhooks/nibss-nip', payoutsWebhookRouter);
+
 // ─── Module Routes ────────────────────────────────────────────────────────────
 app.route('/api/banking', bankingRouter);
 app.route('/api/insurance', insuranceRouter);
 app.route('/api/investment', investmentRouter);
+app.route('/api/payouts', payoutsRouter);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Not found' }, 404));

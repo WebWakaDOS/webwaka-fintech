@@ -54,3 +54,31 @@ CREATE TABLE IF NOT EXISTS investmentPortfolios (
   createdAt TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_investmentPortfolios_tenantId ON investmentPortfolios(tenantId);
+
+-- ─── NIBSS NIP Payout Requests ────────────────────────────────────────────────
+-- Tracks all platform-initiated NIP transfers (vendor payouts, rider commissions, driver settlements)
+-- Invariant 5: Nigeria First — amountKobo is always kobo integers
+
+CREATE TABLE IF NOT EXISTS payoutRequests (
+  id TEXT PRIMARY KEY,
+  tenantId TEXT NOT NULL,
+  initiatorId TEXT NOT NULL,
+  payoutType TEXT NOT NULL,
+  amountKobo INTEGER NOT NULL,
+  destinationAccountNumber TEXT NOT NULL,
+  destinationBankCode TEXT NOT NULL,
+  destinationAccountName TEXT NOT NULL,
+  narration TEXT NOT NULL,
+  nibssReference TEXT NOT NULL UNIQUE,
+  nibssSessionId TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  settledAt TEXT,
+  failureReason TEXT,
+  createdAt TEXT NOT NULL,
+  updatedAt TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_tenantId ON payoutRequests(tenantId);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_status ON payoutRequests(status);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_nibssReference ON payoutRequests(nibssReference);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_initiatorId ON payoutRequests(initiatorId);

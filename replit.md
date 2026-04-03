@@ -42,6 +42,11 @@ A Cloudflare Workers backend API for the WebWaka OS v4 platform providing Bankin
 - `GET|POST /api/banking/*` — Banking module (JWT required)
 - `GET|POST /api/insurance/*` — Insurance module (JWT required)
 - `GET|POST /api/investment/*` — Investment module (JWT required)
+- `POST /api/payouts/initiate` — Initiate NIBSS NIP payout (admin only)
+- `GET /api/payouts` — List payout requests (admin only, filterable by status/payoutType)
+- `GET /api/payouts/:id` — Get single payout request (admin only)
+- `GET /api/payouts/:id/status` — Refresh status from NIBSS (admin only)
+- `POST /webhooks/nibss-nip` — Bank partner webhook (HMAC-verified, no JWT)
 
 ## Environment / Secrets
 Set via `wrangler secret put` for each environment (staging/production):
@@ -49,6 +54,13 @@ Set via `wrangler secret put` for each environment (staging/production):
 - `PAYSTACK_SECRET_KEY` — Paystack API key
 - `OPENROUTER_API_KEY` — OpenRouter API key
 - `TERMII_API_KEY` — Termii SMS API key
+- `NIBSS_BASE_URL` — Bank partner NIP gateway base URL
+- `NIBSS_CLIENT_ID` — Bank partner OAuth2 client ID
+- `NIBSS_CLIENT_SECRET` — Bank partner OAuth2 client secret (also used for webhook HMAC verification)
+- `NIBSS_SOURCE_BANK_CODE` — CBN bank code of the sending institution
+- `NIBSS_SOURCE_ACCOUNT_NUMBER` — Source clearing account number
+- `EVENT_BUS_URL` — (optional) WebWaka Event Bus URL for cross-repo events
+- `EVENT_BUS_SECRET` — (optional) Event Bus shared secret header
 
 ## Deployment
 Configured for Cloudflare Workers:
