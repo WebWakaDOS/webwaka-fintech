@@ -1,72 +1,82 @@
 # WebWaka Fintech Suite
 
-## Project Overview
-A Cloudflare Workers backend API for the WebWaka OS v4 platform providing Banking, Insurance, and Investment services for Nigerian and African markets.
+## Overview
+A multi-tenant fintech API built on Cloudflare Workers + Hono, targeting the Nigerian and African markets. Provides banking, insurance, investment, and automated payouts (NIBSS NIP transfers).
 
 ## Architecture
-- **Runtime**: Cloudflare Workers (via Wrangler dev locally)
-- **Framework**: Hono (lightweight web framework)
-- **Language**: TypeScript
-- **Database**: Cloudflare D1 (SQL, accessed via `DB` binding)
-- **KV Storage**: Cloudflare KV (SESSIONS_KV, RATE_LIMIT_KV)
-- **Object Storage**: Cloudflare R2 (MEDIA_BUCKET)
-- **Auth**: JWT via `@webwaka/core`
-- **Offline Client**: Dexie (IndexedDB)
-- **AI**: OpenRouter abstraction
-- **Payments**: Paystack (kobo integers, en-NG locale)
+- **Runtime:** Cloudflare Workers (Wrangler / Miniflare for local dev)
+- **Framework:** Hono (lightweight HTTP framework)
+- **Language:** TypeScript
+- **Database:** Cloudflare D1 (SQL), Cloudflare KV (sessions/rate-limit), R2 (media)
+- **Auth:** `@webwaka/core` — JWT-based, tenant ID always from JWT (never headers/body)
+- **Payments:** Paystack, NIBSS NIP for inter-bank transfers
+- **AI:** OpenRouter abstraction
+- **SMS/OTP:** Termii
 
-## Key Invariants
-1. **Nigeria First** — kobo integers (100 kobo = 1 Naira), en-NG locale
-2. **Offline First** — Dexie IndexedDB + mutation queue
-3. **Multi-tenant** — tenantId extracted from JWT, never from headers/body
-4. **Vendor Neutral AI** — OpenRouter only
+## Core Invariants
+1. Build Once Use Infinitely — multi-tenant via JWT tenantId
+2. Mobile First — lightweight Hono API
+3. PWA First — Cloudflare Workers + Pages
+4. Offline First — Dexie (IndexedDB) on client side
+5. Nigeria First — all monetary values in kobo (NGN × 100)
+6. Africa First — 7-locale i18n
+7. Vendor Neutral AI — OpenRouter only
 
 ## Project Structure
-- `src/worker.ts` — Entry point, global middleware, route mounting
-- `src/core/` — Types, AI, payment processing
-- `src/db/` — Database schema and Dexie offline DB
-- `src/modules/` — banking, insurance, investment routers
-- `src/middleware/` — JWT and other middleware
-- `src/i18n/` — 7-locale African i18n
-- `migrations/` — Cloudflare D1 SQL migrations
-- `docs/` — Research documents
+```
+src/
+  worker.ts          # Entry point — router + global middleware
+  core/
+    types.ts         # Shared types (Bindings, AppVariables, domain models)
+    nibss.ts         # NIBSS NIP client
+    paystack.ts      # Paystack client
+    events.ts        # WebWaka Event Bus integration
+    ai-platform-client.ts  # OpenRouter AI abstraction
+  middleware/
+    auth.ts          # Re-exports from @webwaka/core
+  modules/
+    banking/         # Bank accounts + transactions
+    insurance/       # Insurance policies
+    investment/      # Investment portfolios
+    payouts/         # NIBSS NIP payout + webhook router
+  db/
+    db.ts            # Dexie offline store definition
+    schema.sql       # D1 SQL schema
+  i18n/             # 7-locale internationalization
+migrations/         # D1 SQL migration scripts
+docs/              # Research + design documentation
+```
 
-## Running Locally
-- **Start**: Workflow "Start application" runs `npx wrangler dev --port 8000 --no-show-interactive-dev-session`
-- **Port**: 8000 (backend/console mode)
-- **Health check**: GET /health
+## Running Locally (Replit)
+The workflow runs `wrangler dev` using Miniflare to simulate Cloudflare bindings locally:
+- **Port:** 8000
+- **Workflow:** "Start application"
+- All D1, KV, and R2 bindings are simulated locally (no Cloudflare account needed)
+- Placeholder secrets are set in `wrangler.toml` [vars] for local dev
+
+## Deploying to Cloudflare
+```bash
+npm run deploy:staging      # Deploy to staging env
+npm run deploy:production   # Deploy to production env
+```
+Before deploying, set secrets via:
+```bash
+wrangler secret put JWT_SECRET --env staging
+wrangler secret put PAYSTACK_SECRET_KEY --env staging
+# ... etc
+```
 
 ## Key Endpoints
 - `GET /health` — Health check (unauthenticated)
-- `POST /api/auth/*` — Auth endpoints (rate limited)
-- `GET|POST /api/banking/*` — Banking module (JWT required)
-- `GET|POST /api/insurance/*` — Insurance module (JWT required)
-- `GET|POST /api/investment/*` — Investment module (JWT required)
-- `POST /api/payouts/initiate` — Initiate NIBSS NIP payout (admin only)
-- `GET /api/payouts` — List payout requests (admin only, filterable by status/payoutType)
-- `GET /api/payouts/:id` — Get single payout request (admin only)
-- `GET /api/payouts/:id/status` — Refresh status from NIBSS (admin only)
-- `POST /webhooks/nibss-nip` — Bank partner webhook (HMAC-verified, no JWT)
+- `POST /webhooks/nibss-nip` — NIBSS NIP webhook (HMAC-verified, unauthenticated)
+- `GET /api/banking/*` — Banking routes (JWT required)
+- `GET /api/insurance/*` — Insurance routes (JWT required)
+- `GET /api/investment/*` — Investment routes (JWT required)
+- `GET /api/payouts/*` — Payouts routes (JWT required)
 
-## Environment / Secrets
-Set via `wrangler secret put` for each environment (staging/production):
-- `JWT_SECRET` — JWT signing secret
-- `PAYSTACK_SECRET_KEY` — Paystack API key
-- `OPENROUTER_API_KEY` — OpenRouter API key
-- `TERMII_API_KEY` — Termii SMS API key
-- `NIBSS_BASE_URL` — Bank partner NIP gateway base URL
-- `NIBSS_CLIENT_ID` — Bank partner OAuth2 client ID
-- `NIBSS_CLIENT_SECRET` — Bank partner OAuth2 client secret (also used for webhook HMAC verification)
-- `NIBSS_SOURCE_BANK_CODE` — CBN bank code of the sending institution
-- `NIBSS_SOURCE_ACCOUNT_NUMBER` — Source clearing account number
-- `EVENT_BUS_URL` — (optional) WebWaka Event Bus URL for cross-repo events
-- `EVENT_BUS_SECRET` — (optional) Event Bus shared secret header
-
-## Deployment
-Configured for Cloudflare Workers:
-- Staging: `npm run deploy:staging`
-- Production: `npm run deploy:production`
-- Environments defined in `wrangler.toml`
-
-## Package Manager
-npm
+## Dependencies
+- `@webwaka/core` — WebWaka OS v4 shared primitives (auth, CORS, rate-limit)
+- `hono` — Web framework
+- `dexie` — IndexedDB wrapper (client-side offline)
+- `wrangler` — Cloudflare Workers CLI + Miniflare dev runtime
+- `typescript`, `vitest` — Development tooling

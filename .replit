@@ -21,13 +21,13 @@ args = "Start application"
 name = "Start application"
 author = "agent"
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx wrangler dev --port 8000 --no-show-interactive-dev-session"
-waitForPort = 8000
-
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "node_modules/.bin/wrangler dev --port 8000 --no-show-interactive-dev-session"
+waitForPort = 8000
 
 [[ports]]
 localPort = 8000

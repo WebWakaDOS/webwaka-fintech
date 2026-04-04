@@ -3,6 +3,36 @@ main = "src/worker.ts"
 compatibility_date = "2024-07-25"
 compatibility_flags = ["nodejs_compat"]
 
+# ─── Local Development Bindings (Miniflare / wrangler dev) ───────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "webwaka-institutional-db-local"
+database_id = "00000000-0000-0000-0000-000000000001"
+
+[[kv_namespaces]]
+binding = "SESSIONS_KV"
+id = "00000000000000000000000000000001"
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "00000000000000000000000000000002"
+
+[[r2_buckets]]
+binding = "MEDIA_BUCKET"
+bucket_name = "webwaka-fintech-docs-local"
+
+[vars]
+ENVIRONMENT = "local"
+JWT_SECRET = "local-dev-secret-change-in-production"
+PAYSTACK_SECRET_KEY = "sk_test_placeholder"
+OPENROUTER_API_KEY = "placeholder"
+TERMII_API_KEY = "placeholder"
+NIBSS_BASE_URL = "https://placeholder.nibss.local"
+NIBSS_CLIENT_ID = "placeholder"
+NIBSS_CLIENT_SECRET = "placeholder"
+NIBSS_SOURCE_BANK_CODE = "000001"
+NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
+
 # ─── Staging Environment ──────────────────────────────────────────────────────
 [env.staging]
 name = "webwaka-fintech-staging"
