@@ -14,7 +14,7 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@webwaka/core": "^1.3.2",
+    "@webwaka/core": "^1.6.1",
     "dexie": "^3.2.7",
     "hono": "^4.12.9"
   },
