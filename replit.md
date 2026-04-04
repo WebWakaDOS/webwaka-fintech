@@ -1,82 +1,165 @@
 # WebWaka Fintech Suite
 
-## Overview
-A multi-tenant fintech API built on Cloudflare Workers + Hono, targeting the Nigerian and African markets. Provides banking, insurance, investment, and automated payouts (NIBSS NIP transfers).
+Multi-tenant fintech API on **Cloudflare Workers + Hono** targeting the Nigerian and African market.
 
-## Architecture
-- **Runtime:** Cloudflare Workers (Wrangler / Miniflare for local dev)
-- **Framework:** Hono (lightweight HTTP framework)
-- **Language:** TypeScript
-- **Database:** Cloudflare D1 (SQL), Cloudflare KV (sessions/rate-limit), R2 (media)
-- **Auth:** `@webwaka/core` — JWT-based, tenant ID always from JWT (never headers/body)
-- **Payments:** Paystack, NIBSS NIP for inter-bank transfers
-- **AI:** OpenRouter abstraction
-- **SMS/OTP:** Termii
+## Platform
 
-## Core Invariants
-1. Build Once Use Infinitely — multi-tenant via JWT tenantId
-2. Mobile First — lightweight Hono API
-3. PWA First — Cloudflare Workers + Pages
-4. Offline First — Dexie (IndexedDB) on client side
-5. Nigeria First — all monetary values in kobo (NGN × 100)
-6. Africa First — 7-locale i18n
-7. Vendor Neutral AI — OpenRouter only
+| Component | Technology |
+|-----------|------------|
+| Runtime | Cloudflare Workers (Miniflare for local dev) |
+| Framework | Hono v4 |
+| Database | Cloudflare D1 (SQLite) |
+| Key-Value | Cloudflare KV |
+| Object Storage | Cloudflare R2 |
+| Auth | `@webwaka/core` — `jwtAuthMiddleware`, `requireRole`, `secureCORS`, `rateLimit` |
+| Package manager | npm |
 
-## Project Structure
+## Running the Worker
+
 ```
-src/
-  worker.ts          # Entry point — router + global middleware
-  core/
-    types.ts         # Shared types (Bindings, AppVariables, domain models)
-    nibss.ts         # NIBSS NIP client
-    paystack.ts      # Paystack client
-    events.ts        # WebWaka Event Bus integration
-    ai-platform-client.ts  # OpenRouter AI abstraction
-  middleware/
-    auth.ts          # Re-exports from @webwaka/core
-  modules/
-    banking/         # Bank accounts + transactions
-    insurance/       # Insurance policies
-    investment/      # Investment portfolios
-    payouts/         # NIBSS NIP payout + webhook router
-  db/
-    db.ts            # Dexie offline store definition
-    schema.sql       # D1 SQL schema
-  i18n/             # 7-locale internationalization
-migrations/         # D1 SQL migration scripts
-docs/              # Research + design documentation
+node_modules/.bin/wrangler dev --port 8000 --no-show-interactive-dev-session
 ```
 
-## Running Locally (Replit)
-The workflow runs `wrangler dev` using Miniflare to simulate Cloudflare bindings locally:
-- **Port:** 8000
-- **Workflow:** "Start application"
-- All D1, KV, and R2 bindings are simulated locally (no Cloudflare account needed)
-- Placeholder secrets are set in `wrangler.toml` [vars] for local dev
+Port 8000 is a console-type output. The workflow is named **Start application**.
 
-## Deploying to Cloudflare
-```bash
-npm run deploy:staging      # Deploy to staging env
-npm run deploy:production   # Deploy to production env
-```
-Before deploying, set secrets via:
-```bash
-wrangler secret put JWT_SECRET --env staging
-wrangler secret put PAYSTACK_SECRET_KEY --env staging
-# ... etc
-```
+## Invariants (Never Break)
 
-## Key Endpoints
-- `GET /health` — Health check (unauthenticated)
-- `POST /webhooks/nibss-nip` — NIBSS NIP webhook (HMAC-verified, unauthenticated)
-- `GET /api/banking/*` — Banking routes (JWT required)
-- `GET /api/insurance/*` — Insurance routes (JWT required)
-- `GET /api/investment/*` — Investment routes (JWT required)
-- `GET /api/payouts/*` — Payouts routes (JWT required)
+1. **Build Once Use Infinitely** — all auth via `@webwaka/core`, never re-implement
+2. `tenantId` always from JWT payload, never from request headers/body
+3. **Nigeria First** — all monetary values in **kobo** (NGN × 100), integers only
+4. AI credit scoring uses `getAICompletion` from `src/core/ai-platform-client.ts` when `AI_PLATFORM_URL` is set; falls back to rule-based scorer automatically
 
-## Dependencies
-- `@webwaka/core` — WebWaka OS v4 shared primitives (auth, CORS, rate-limit)
-- `hono` — Web framework
-- `dexie` — IndexedDB wrapper (client-side offline)
-- `wrangler` — Cloudflare Workers CLI + Miniflare dev runtime
-- `typescript`, `vitest` — Development tooling
+## Modules & Route Map
+
+### Core Modules
+
+| Module | Router file | Route prefix |
+|--------|-------------|--------------|
+| Banking | `src/modules/banking/index.ts` | `/api/banking` |
+| Insurance | `src/modules/insurance/index.ts` | `/api/insurance` |
+| Investment | `src/modules/investment/index.ts` | `/api/investment` |
+| NIBSS NIP Payouts | `src/modules/payouts/index.ts` | `/api/payouts` + `/webhooks/nibss-nip` |
+
+### Enhancement Modules
+
+| # | Feature | Router file | Route prefix |
+|---|---------|-------------|--------------|
+| 2 | AI Credit Scoring | `src/modules/lending/index.ts` | `/api/lending/credit-scores` |
+| 3 | Virtual Card Issuance | `src/modules/cards/index.ts` | `/api/cards` |
+| 4 | CBN Regulatory Reporting | `src/modules/compliance/index.ts` | `/api/compliance/cbn-reports` |
+| 5 | Savings Goals (Ajo/Esusu) | `src/modules/savings/index.ts` | `/api/savings` |
+| 6 | Overdraft Protection | `src/modules/overdraft/index.ts` | `/api/overdraft` |
+| 7 | Bill Payments (VTPass) | `src/modules/bills/index.ts` | `/api/bills` |
+| 8 | USSD Banking Interface | `src/modules/ussd/index.ts` | `/api/ussd` + `/webhooks/ussd` |
+| 9 | Fraud Detection Engine | `src/modules/fraud/index.ts` | `/api/fraud` |
+| 10 | Multi-Currency Wallets | `src/modules/wallets/index.ts` | `/api/wallets` |
+| 11 | Crypto On/Off Ramps | `src/modules/crypto/index.ts` | `/api/crypto` |
+| 12 | Agent Banking (POS) | `src/modules/agent/index.ts` | `/api/agent` |
+| 13 | Automated Reconciliation | `src/modules/compliance/index.ts` | `/api/compliance/reconciliation` |
+| 14 | Standing Orders | `src/modules/standing-orders/index.ts` | `/api/standing-orders` |
+| 15 | Split Payments | `src/modules/split-payments/index.ts` | `/api/split-payments` |
+| 16 | KYC Tier Enforcement | `src/modules/kyc/index.ts` | `/api/kyc` |
+| 17 | Interest-Bearing Accounts | `src/modules/interest/index.ts` | `/api/interest` |
+| 18 | Loan Origination | `src/modules/lending/index.ts` | `/api/lending/loans` |
+| 19 | Debt Collection Automation | `src/modules/lending/index.ts` | `/api/lending/debt-collection` |
+| 20 | Open Banking API | `src/modules/open-banking/index.ts` | `/api/open-banking` |
+
+Feature 1 (NIBSS NIP) is the existing payouts module.
+
+## Database
+
+Schema: `src/db/schema.sql`
+Migrations:
+- `migrations/0001_initial_schema.sql`
+- `migrations/0002_payout_requests.sql`
+- `migrations/0003_enhancements.sql` — all 20+ new tables
+
+### Table inventory
+
+| Table | Module |
+|-------|--------|
+| bankAccounts | Banking |
+| transactions | Banking |
+| insurancePolicies | Insurance |
+| investmentPortfolios | Investment |
+| payoutRequests | NIBSS NIP |
+| kycProfiles | KYC (#16) |
+| creditScores | AI Credit Scoring (#2) |
+| loans | Loan Origination (#18) |
+| loanRepayments | Loan Origination (#18) |
+| savingsGoals | Savings Goals (#5) |
+| savingsGoalMembers | Savings Goals (#5) |
+| savingsGoalContributions | Savings Goals (#5) |
+| virtualCards | Virtual Cards (#3) |
+| multiCurrencyWallets | Multi-Currency Wallets (#10) |
+| billPayments | Bill Payments (#7) |
+| standingOrders | Standing Orders (#14) |
+| splitPaymentRules | Split Payments (#15) |
+| splitPaymentRecipients | Split Payments (#15) |
+| fraudAlerts | Fraud Detection (#9) |
+| agentTransactions | Agent Banking (#12) |
+| cryptoTransactions | Crypto On/Off Ramps (#11) |
+| debtCollectionEvents | Debt Collection (#19) |
+| openBankingApps | Open Banking (#20) |
+| openBankingApiKeys | Open Banking (#20) |
+| reconciliationReports | Reconciliation (#13) |
+| cbnReports | CBN Reports (#4) |
+| interestAccruals | Interest (#17) |
+| overdraftEvents | Overdraft Protection (#6) |
+| ussdSessions | USSD Banking (#8) |
+
+## Optional Environment Integrations
+
+Configure in `wrangler.toml` [vars] for local dev or via `wrangler secret put` for staging/production:
+
+| Variable | Used by | Fallback |
+|----------|---------|----------|
+| `AI_PLATFORM_URL` | AI Credit Scoring | Rule-based scorer |
+| `INTER_SERVICE_SECRET` | AI Platform auth | — |
+| `VTPASS_API_KEY` + `VTPASS_BASE_URL` | Bill Payments | Simulated success |
+| `CARD_ISSUER_KEY` + `CARD_ISSUER_URL` | Virtual Cards | Simulated card |
+| `CRYPTO_EXCHANGE_URL` + `CRYPTO_EXCHANGE_KEY` | Crypto ramps | Indicative rates |
+| `USSD_GATEWAY_URL` + `USSD_GATEWAY_SECRET` | USSD | Session-based only |
+| `EVENT_BUS_URL` + `EVENT_BUS_SECRET` | NIBSS events | Console log |
+
+## KYC Tier Limits (CBN)
+
+| Tier | Requirement | Single Tx | Daily | Monthly |
+|------|-------------|-----------|-------|---------|
+| 1 | BVN only | ₦50k | ₦50k | ₦300k |
+| 2 | BVN + address | ₦300k | ₦300k | ₦2M |
+| 3 | Full corporate | ₦5M | ₦10M | None |
+
+## Fraud Detection Rules
+
+Auto-applied on all banking transactions:
+
+| Rule | Trigger |
+|------|---------|
+| `large_amount` | > ₦1,000,000 |
+| `odd_hours` | 01:00–04:00 WAT |
+| `velocity_breach` | >5 tx in 10 minutes |
+| `rapid_withdrawal` | >3 withdrawals > ₦500k in 1 hour |
+
+## USSD Session Webhook
+
+Mounted at `/webhooks/ussd` — unauthenticated, outside JWT guard.
+Accepts Africa's Talking or similar gateway callbacks.
+Returns `CON ...` for continuation or `END ...` to close session.
+
+## Cron-triggered Batch Endpoints
+
+| Endpoint | Function |
+|----------|----------|
+| `POST /api/standing-orders/process-due` | Execute all due standing orders |
+| `POST /api/interest/accrue` | Accrue daily interest for eligible accounts |
+| `POST /api/interest/credit` | Credit accrued interest to account balances |
+| `POST /api/compliance/reconciliation/run` | Run nightly reconciliation report |
+
+## Open Banking Flow
+
+1. Admin registers app: `POST /api/open-banking/apps`
+2. Admin generates API key: `POST /api/open-banking/apps/:id/keys`
+3. Third-party uses `Authorization: Bearer <key>` or `X-API-Key: <key>`
+4. Third-party calls `/api/open-banking/data/*` endpoints
+5. Access is scoped per app: `accounts.read`, `transactions.read`, `balances.read`, `payments.initiate`

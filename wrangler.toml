@@ -32,6 +32,17 @@ NIBSS_CLIENT_ID = "placeholder"
 NIBSS_CLIENT_SECRET = "placeholder"
 NIBSS_SOURCE_BANK_CODE = "000001"
 NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
+# Optional integrations — leave blank for local dev
+# AI_PLATFORM_URL = ""
+# INTER_SERVICE_SECRET = ""
+# VTPASS_API_KEY = ""
+# VTPASS_BASE_URL = ""
+# USSD_GATEWAY_URL = ""
+# USSD_GATEWAY_SECRET = ""
+# CARD_ISSUER_KEY = ""
+# CARD_ISSUER_URL = ""
+# CRYPTO_EXCHANGE_URL = ""
+# CRYPTO_EXCHANGE_KEY = ""
 
 # ─── Staging Environment ──────────────────────────────────────────────────────
 [env.staging]
@@ -93,6 +104,18 @@ ENVIRONMENT = "production"
 # NIBSS_CLIENT_SECRET         — Bank partner OAuth2 client secret (also HMAC webhook key)
 # NIBSS_SOURCE_BANK_CODE      — CBN bank code of the sending institution (e.g. "000001")
 # NIBSS_SOURCE_ACCOUNT_NUMBER — Clearing account number held at the bank partner
+#
+# ─── Enhancement Secrets (optional) ──────────────────────────────────────────
+# AI_PLATFORM_URL             — webwaka-ai-platform URL (for AI credit scoring)
+# INTER_SERVICE_SECRET        — Inter-service secret for AI platform auth
+# VTPASS_API_KEY              — VTPass API key for bill payments
+# VTPASS_BASE_URL             — VTPass base URL
+# USSD_GATEWAY_URL            — USSD gateway URL
+# USSD_GATEWAY_SECRET         — USSD gateway secret
+# CARD_ISSUER_KEY             — Virtual card issuer API key (Paystack, etc.)
+# CARD_ISSUER_URL             — Virtual card issuer base URL
+# CRYPTO_EXCHANGE_URL         — Licensed crypto exchange partner URL
+# CRYPTO_EXCHANGE_KEY         — Crypto exchange API key
 #
 # ─── Event Bus Secrets ────────────────────────────────────────────────────────
 # EVENT_BUS_URL               — WebWaka Event Bus URL (optional; events skipped if absent)
