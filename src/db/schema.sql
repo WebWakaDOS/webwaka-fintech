@@ -68,6 +68,7 @@ CREATE TABLE IF NOT EXISTS payoutRequests (
   narration TEXT NOT NULL,
   nibssReference TEXT NOT NULL UNIQUE,
   nibssSessionId TEXT,
+  sourceAccountId TEXT,
   status TEXT NOT NULL DEFAULT 'pending',
   settledAt TEXT,
   failureReason TEXT,

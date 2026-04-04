@@ -78,7 +78,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
   }
 
   // Validate required fields
-  const { initiatorId, payoutType, amountKobo, destinationAccountNumber, destinationBankCode, narration } = body;
+  const { initiatorId, payoutType, amountKobo, destinationAccountNumber, destinationBankCode, narration, sourceAccountId } = body;
   if (!initiatorId || !payoutType || !amountKobo || !destinationAccountNumber || !destinationBankCode || !narration) {
     return c.json({ error: 'Missing required fields: initiatorId, payoutType, amountKobo, destinationAccountNumber, destinationBankCode, narration' }, 400);
   }
@@ -96,10 +96,33 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     return c.json({ error: 'destinationBankCode must be a 3–6 digit CBN bank code' }, 400);
   }
 
+  // QA-FIN-1: Pre-flight balance check and deduction when a source account is supplied
+  if (sourceAccountId) {
+    const srcAccount = await c.env.DB.prepare(
+      'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
+    ).bind(sourceAccountId, tenantId, 'active').first() as Record<string, number> | null;
+
+    if (!srcAccount) {
+      return c.json({ error: 'Source account not found or not active' }, 404);
+    }
+    if (srcAccount.balanceKobo < amountKobo) {
+      return c.json({ error: 'Insufficient balance in source account' }, 422);
+    }
+  }
+
   const creds = credsFromEnv(c.env);
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
   const nibssReference = generateNibssReference(tenantId);
+
+  // Deduct balance before calling NIBSS — reversal happens on any failure path
+  let balanceDeducted = false;
+  if (sourceAccountId) {
+    await c.env.DB.prepare(
+      'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    ).bind(amountKobo, now, sourceAccountId, tenantId).run();
+    balanceDeducted = true;
+  }
 
   try {
     // Step 1: Authenticate with NIBSS bank partner
@@ -112,13 +135,13 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     await c.env.DB.prepare(
       `INSERT INTO payoutRequests
          (id, tenantId, initiatorId, payoutType, amountKobo, destinationAccountNumber,
-          destinationBankCode, destinationAccountName, narration, nibssReference, status, createdAt, updatedAt)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)`
+          destinationBankCode, destinationAccountName, narration, nibssReference, sourceAccountId, status, createdAt, updatedAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)`
     )
       .bind(
         id, tenantId, initiatorId, payoutType, amountKobo,
         destinationAccountNumber, destinationBankCode, enquiry.destinationAccountName,
-        narration.slice(0, 100), nibssReference, now, now
+        narration.slice(0, 100), nibssReference, sourceAccountId ?? null, now, now
       )
       .run();
 
@@ -140,6 +163,13 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
       )
         .bind(`NIBSS rejected: ${transfer.responseMessage} (${transfer.responseCode})`, now, id, tenantId)
         .run();
+
+      // Reverse balance deduction — NIBSS did not accept the transfer
+      if (balanceDeducted && sourceAccountId) {
+        await c.env.DB.prepare(
+          'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+        ).bind(amountKobo, now, sourceAccountId, tenantId).run();
+      }
 
       // Publish payout.failed event
       await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
@@ -189,6 +219,13 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     )
       .bind(reason, now, id, tenantId)
       .run();
+
+    // Reverse balance deduction — upstream provider unavailable (Offline Resilience)
+    if (balanceDeducted && sourceAccountId) {
+      await c.env.DB.prepare(
+        'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      ).bind(amountKobo, now, sourceAccountId, tenantId).run();
+    }
 
     console.error('[Payouts] Initiation error:', err);
     return c.json({ error: reason }, 500);
@@ -422,6 +459,13 @@ async function applyFailure(
   )
     .bind(status, reason, now, now, id, tenantId)
     .run();
+
+  // Offline Resilience: reverse the internal wallet deduction when NIBSS reports failure
+  if (row.sourceAccountId) {
+    await env.DB.prepare(
+      'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    ).bind(row.amountKobo as number, now, row.sourceAccountId as string, tenantId).run();
+  }
 
   await publishEvent(env.EVENT_BUS_URL, env.EVENT_BUS_SECRET, {
     event: 'payout.failed',

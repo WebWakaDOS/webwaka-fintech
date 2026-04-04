@@ -134,6 +134,8 @@ export interface InitiatePayoutBody {
   destinationAccountNumber: string;
   destinationBankCode: string;
   narration: string;
+  /** Optional: internal wallet account to debit before sending to NIBSS. Deduction is reversed on failure. */
+  sourceAccountId?: string;
 }
 
 export interface NibssWebhookPayload {

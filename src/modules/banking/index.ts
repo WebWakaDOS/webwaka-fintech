@@ -126,7 +126,7 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
   if (!body.skipKycCheck && ['withdrawal', 'transfer'].includes(body.type)) {
     const kycCheck = await checkKycLimit(c.env.DB, tenantId, account.customerId as string, body.amountKobo);
     if (!kycCheck.allowed) {
-      return c.json({ error: kycCheck.reason }, 422);
+      return c.json({ error: kycCheck.reason }, 403);
     }
   }
 
