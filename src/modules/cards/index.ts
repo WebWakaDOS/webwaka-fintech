@@ -14,7 +14,7 @@
  * In local dev, a simulated card is issued.
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, CardCurrency } from '../../core/types';
 
@@ -175,7 +175,7 @@ cardsRouter.put('/:id/limit', requireRole(['admin', 'teller', 'customer']), asyn
   return c.json({ success: true, spendingLimitKobo: body.spendingLimitKobo });
 });
 
-async function updateCardStatus(c: Parameters<Parameters<typeof cardsRouter.put>[1]>[0], fromStatus: string, toStatus: string) {
+async function updateCardStatus(c: Context<{ Bindings: Bindings; Variables: AppVariables }>, fromStatus: string, toStatus: string) {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');

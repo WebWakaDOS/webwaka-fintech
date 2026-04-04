@@ -15,7 +15,7 @@
  *   PUT    /api/wallets/:id/unfreeze        — Unfreeze wallet
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, WalletCurrency } from '../../core/types';
 
@@ -198,7 +198,7 @@ walletsRouter.post('/convert', requireRole(['admin', 'teller', 'customer']), asy
 walletsRouter.put('/:id/freeze', requireRole(['admin', 'teller']), async (c) => updateWalletStatus(c, 'active', 'frozen'));
 walletsRouter.put('/:id/unfreeze', requireRole(['admin', 'teller']), async (c) => updateWalletStatus(c, 'frozen', 'active'));
 
-async function updateWalletStatus(c: Parameters<Parameters<typeof walletsRouter.put>[1]>[0], from: string, to: string) {
+async function updateWalletStatus(c: Context<{ Bindings: Bindings; Variables: AppVariables }>, from: string, to: string) {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');

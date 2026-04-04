@@ -24,7 +24,7 @@
  *   GET    /api/open-banking/data/balances     — Third-party: read balances (API key auth)
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, OpenBankingScope } from '../../core/types';
 
@@ -228,7 +228,7 @@ openBankingRouter.get('/data/transactions', async (c) => {
   return c.json({ data: results });
 });
 
-async function resolveApiKey(c: Parameters<Parameters<typeof openBankingRouter.get>[1]>[0]): Promise<{ tenantId: string | null; scopes: OpenBankingScope[] }> {
+async function resolveApiKey(c: Context<{ Bindings: Bindings; Variables: AppVariables }>): Promise<{ tenantId: string | null; scopes: OpenBankingScope[] }> {
   const authHeader = c.req.header('Authorization') ?? '';
   const apiKey = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : c.req.header('X-API-Key') ?? '';
 

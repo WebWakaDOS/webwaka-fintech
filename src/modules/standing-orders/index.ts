@@ -15,7 +15,7 @@
  *   POST   /api/standing-orders/process-due — Execute all due standing orders (admin/cron)
  */
 
-import { Hono } from 'hono';
+import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables } from '../../core/types';
 import { validateNuban, validateBankCode } from '../../core/nibss';
@@ -190,7 +190,7 @@ standingOrdersRouter.post('/process-due', requireRole(['admin']), async (c) => {
   return c.json({ processed: processed.length, results: processed });
 });
 
-async function setOrderStatus(c: Parameters<Parameters<typeof standingOrdersRouter.put>[1]>[0], from: string, to: string) {
+async function setOrderStatus(c: Context<{ Bindings: Bindings; Variables: AppVariables }>, from: string, to: string) {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
