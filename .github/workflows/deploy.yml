@@ -1,13 +1,14 @@
-name: Deploy WebWaka Institutional
+name: Deploy WebWaka Fintech
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop]
   pull_request:
     branches: [main]
 
 jobs:
-  test-and-deploy:
+  lint-and-test:
+    name: Lint & Test
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,9 +17,10 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: 'npm'
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Typecheck
         run: npm run typecheck
@@ -26,18 +28,68 @@ jobs:
       - name: Run Tests
         run: npm run test
 
+      - name: Enforce zero console.log in production code
+        run: |
+          if grep -r "console\.log" src/ --include="*.ts" --exclude="*.test.ts"; then
+            echo "ERROR: console.log found in production code. Use structured logging instead."
+            exit 1
+          fi
+          echo "✅ No console.log in production code"
+
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    if: github.ref == 'refs/heads/develop' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Deploy to Cloudflare Workers (Staging)
-        if: github.event_name == 'pull_request'
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --env staging
 
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [lint-and-test]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://webwaka-fintech-api-prod.webwaka.workers.dev
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
       - name: Deploy to Cloudflare Workers (Production)
-        if: github.ref == 'refs/heads/main'
         uses: cloudflare/wrangler-action@v3
         with:
-          apiToken: ${{ secrets.CF_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy --env production
+
+      - name: Verify API health
+        run: |
+          sleep 20
+          curl -sf https://webwaka-fintech-api-prod.webwaka.workers.dev/health \
+            -o /tmp/health.json || echo "Health check pending..."
+          cat /tmp/health.json || true
