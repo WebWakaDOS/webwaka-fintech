@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # ─── Local Development Bindings (Miniflare / wrangler dev) ───────────────────
 [[d1_databases]]
 binding = "DB"
-database_name = "webwaka-institutional-db-local"
+database_name = "webwaka-fintech-db-local"
 database_id = "00000000-0000-0000-0000-000000000001"
 
 [[kv_namespaces]]
@@ -45,13 +45,19 @@ NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
 # CRYPTO_EXCHANGE_KEY = ""
 
 # ─── Staging Environment ──────────────────────────────────────────────────────
+# IMPORTANT: webwaka-fintech requires its OWN dedicated D1 database.
+# Do NOT share the institutional DB (ee93377c) — fintech has separate table schemas
+# for banking, wallets, KYC, lending, crypto, insurance, etc.
+# Create a fintech staging DB:
+#   wrangler d1 create webwaka-fintech-db-staging
+# Then replace the REPLACE_WITH_... placeholder with the real ID.
 [env.staging]
 name = "webwaka-fintech-staging"
 
 [[env.staging.d1_databases]]
 binding = "DB"
-database_name = "webwaka-institutional-db-staging"
-database_id = "ee93377c-8000-45d6-ae54-f0d4c588bf04"
+database_name = "webwaka-fintech-db-staging"
+database_id = "REPLACE_WITH_FINTECH_STAGING_DB_ID"
 
 [[env.staging.kv_namespaces]]
 binding = "SESSIONS_KV"
@@ -69,13 +75,16 @@ bucket_name = "webwaka-fintech-docs-staging"
 ENVIRONMENT = "staging"
 
 # ─── Production Environment ───────────────────────────────────────────────────
+# IMPORTANT: Create a dedicated fintech production D1 DB:
+#   wrangler d1 create webwaka-fintech-db-prod
+# Then replace the REPLACE_WITH_... placeholder with the real ID.
 [env.production]
 name = "webwaka-fintech-production"
 
 [[env.production.d1_databases]]
 binding = "DB"
-database_name = "webwaka-institutional-db-production"
-database_id = "ee93377c-8000-45d6-ae54-f0d4c588bf04"
+database_name = "webwaka-fintech-db-prod"
+database_id = "REPLACE_WITH_FINTECH_PROD_DB_ID"
 
 [[env.production.kv_namespaces]]
 binding = "SESSIONS_KV"
