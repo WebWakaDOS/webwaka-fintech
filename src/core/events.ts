@@ -376,7 +376,7 @@ export async function publishEvent(
   event: WebWakaEvent,
 ): Promise<void> {
   if (!eventBusUrl) {
-    console.log(`[EventBus] No EVENT_BUS_URL configured — skipping event: ${event.event}`);
+    console.warn(`[EventBus] No EVENT_BUS_URL configured — skipping event: ${event.event}`, event);
     return;
   }
 
@@ -393,7 +393,7 @@ export async function publishEvent(
     if (!resp.ok) {
       console.error(`[EventBus] Failed to publish ${event.event}: HTTP ${resp.status}`);
     } else {
-      console.log(`[EventBus] Published ${event.event} successfully`);
+      console.info(`[EventBus] Published ${event.event} successfully`);
     }
   } catch (err) {
     console.error(`[EventBus] Exception publishing ${event.event}:`, err);

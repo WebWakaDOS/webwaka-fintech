@@ -93,7 +93,7 @@ describe('NIBSS utilities', () => {
 
 describe('Event Bus publisher', () => {
   it('logs and skips when EVENT_BUS_URL is not configured', async () => {
-    const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await publishEvent(undefined, undefined, {
       event: 'payout.completed',
       payoutRequestId: 'pr-1',

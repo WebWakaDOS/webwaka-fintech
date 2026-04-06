@@ -209,7 +209,7 @@ paystackWebhookRouter.post('/', async (c) => {
     .first();
 
   if (existingEvent) {
-    console.log(`[Paystack Webhook] Already processed event ${paystackEventId}`);
+    console.info(`[Paystack Webhook] Already processed event ${paystackEventId}`);
     return c.json({ received: true, idempotent: true });
   }
 
