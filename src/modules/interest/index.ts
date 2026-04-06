@@ -35,7 +35,7 @@ interestRouter.post('/accrue', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const { results: eligibleAccounts } = await c.env.DB.prepare(
-    `SELECT id, customerId, accountType, balanceKobo FROM bankAccounts
+    `SELECT id, customerId, accountType, balanceKobo FROM fint_bankAccounts
      WHERE tenantId = ? AND status = 'active' AND accountType IN ('savings', 'fixed_deposit')
      AND balanceKobo > 0`
   )
@@ -52,13 +52,13 @@ interestRouter.post('/accrue', requireRole(['admin']), async (c) => {
     if (dailyInterestKobo <= 0) continue;
 
     const existingAccrual = await c.env.DB.prepare(
-      'SELECT id FROM interestAccruals WHERE tenantId = ? AND accountId = ? AND accrualDate = ?'
+      'SELECT id FROM fint_interestAccruals WHERE tenantId = ? AND accountId = ? AND accrualDate = ?'
     ).bind(tenantId, account.id, accrualDate).first();
 
     if (existingAccrual) continue;
 
     await c.env.DB.prepare(
-      `INSERT INTO interestAccruals (id, tenantId, accountId, customerId, accrualDate, principalKobo, annualRateBps, dailyInterestKobo, credited, createdAt)
+      `INSERT INTO fint_interestAccruals (id, tenantId, accountId, customerId, accrualDate, principalKobo, annualRateBps, dailyInterestKobo, credited, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)`
     )
       .bind(crypto.randomUUID(), tenantId, account.id, account.customerId, accrualDate, account.balanceKobo, annualRateBps, dailyInterestKobo, now)
@@ -85,7 +85,7 @@ interestRouter.post('/credit', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const { results: uncreditedRows } = await c.env.DB.prepare(
-    `SELECT * FROM interestAccruals WHERE tenantId = ? AND credited = 0 AND accrualDate <= ?
+    `SELECT * FROM fint_interestAccruals WHERE tenantId = ? AND credited = 0 AND accrualDate <= ?
      ORDER BY accrualDate ASC LIMIT 500`
   )
     .bind(tenantId, upToDate)
@@ -99,14 +99,14 @@ interestRouter.post('/credit', requireRole(['admin']), async (c) => {
     try {
       await c.env.DB.batch([
         c.env.DB.prepare(
-          'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+          'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
         ).bind(accrual.dailyInterestKobo, now, accrual.accountId, tenantId),
         c.env.DB.prepare(
-          `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+          `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
            VALUES (?, ?, ?, 'interest', ?, ?, 'success', ?, ?)`
         ).bind(crypto.randomUUID(), tenantId, accrual.accountId, accrual.dailyInterestKobo, reference, `Daily interest — ${accrual.accrualDate}`, now),
         c.env.DB.prepare(
-          'UPDATE interestAccruals SET credited = 1, creditedAt = ? WHERE id = ? AND tenantId = ?'
+          'UPDATE fint_interestAccruals SET credited = 1, creditedAt = ? WHERE id = ? AND tenantId = ?'
         ).bind(now, accrual.id, tenantId),
       ]);
       credited++;
@@ -123,7 +123,7 @@ interestRouter.get('/accruals', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
   const credited = c.req.query('credited');
 
-  let query = 'SELECT * FROM interestAccruals WHERE tenantId = ?';
+  let query = 'SELECT * FROM fint_interestAccruals WHERE tenantId = ?';
   const params: (string | number)[] = [tenantId];
   if (credited !== undefined) { query += ' AND credited = ?'; params.push(credited === 'true' ? 1 : 0); }
   query += ' ORDER BY accrualDate DESC, createdAt DESC LIMIT 500';
@@ -138,13 +138,13 @@ interestRouter.get('/accruals/:accountId', requireRole(['admin', 'teller', 'cust
   const accountId = c.req.param('accountId');
 
   if (user.role === 'customer') {
-    const account = await c.env.DB.prepare('SELECT customerId FROM bankAccounts WHERE id = ? AND tenantId = ?')
+    const account = await c.env.DB.prepare('SELECT customerId FROM fint_bankAccounts WHERE id = ? AND tenantId = ?')
       .bind(accountId, tenantId).first() as Record<string, unknown> | null;
     if (!account || account.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
   }
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM interestAccruals WHERE tenantId = ? AND accountId = ? ORDER BY accrualDate DESC LIMIT 200'
+    'SELECT * FROM fint_interestAccruals WHERE tenantId = ? AND accountId = ? ORDER BY accrualDate DESC LIMIT 200'
   )
     .bind(tenantId, accountId)
     .all();

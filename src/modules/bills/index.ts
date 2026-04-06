@@ -64,7 +64,7 @@ billsRouter.post('/pay', requireRole(['admin', 'teller', 'customer']), async (c)
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(accountId, tenantId, customerId, 'active')
     .first() as Record<string, number> | null;
@@ -104,7 +104,7 @@ billsRouter.post('/pay', requireRole(['admin', 'teller', 'customer']), async (c)
       if (vtResp.ok) {
         const vtData = await vtResp.json() as Record<string, unknown>;
         const content = vtData.content as Record<string, unknown> ?? {};
-        externalReference = (content.transactions as Record<string, unknown> ?? {}).transactionId as string ?? null;
+        externalReference = (content.fint_transactions as Record<string, unknown> ?? {}).transactionId as string ?? null;
         if ((vtData.code as string) !== '000') {
           status = 'failed';
           responseMessage = (vtData.response_description as string) ?? 'VTPass payment failed';
@@ -122,7 +122,7 @@ billsRouter.post('/pay', requireRole(['admin', 'teller', 'customer']), async (c)
 
   const batch = [
     c.env.DB.prepare(
-      `INSERT INTO billPayments (id, tenantId, customerId, accountId, billType, provider, amountKobo, phone, meterNumber, smartcardNumber, reference, externalReference, status, responseMessage, createdAt, updatedAt)
+      `INSERT INTO fint_billPayments (id, tenantId, customerId, accountId, billType, provider, amountKobo, phone, meterNumber, smartcardNumber, reference, externalReference, status, responseMessage, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, tenantId, customerId, accountId, billType, provider, amountKobo, body.phone ?? null, body.meterNumber ?? null, body.smartcardNumber ?? null, reference, externalReference, status, responseMessage, now, now),
   ];
@@ -130,12 +130,12 @@ billsRouter.post('/pay', requireRole(['admin', 'teller', 'customer']), async (c)
   if (status === 'success') {
     batch.push(
       c.env.DB.prepare(
-        'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+        'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
       ).bind(amountKobo, now, accountId, tenantId)
     );
     batch.push(
       c.env.DB.prepare(
-        `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+        `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
          VALUES (?, ?, ?, 'fee', ?, ?, 'success', ?, ?)`
       ).bind(crypto.randomUUID(), tenantId, accountId, amountKobo, reference, `${billType} bill — ${provider}`, now)
     );
@@ -152,8 +152,8 @@ billsRouter.get('/', requireRole(['admin', 'teller', 'customer']), async (c) => 
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM billPayments WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC LIMIT 100'
-    : 'SELECT * FROM billPayments WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT * FROM fint_billPayments WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC LIMIT 100'
+    : 'SELECT * FROM fint_billPayments WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -165,7 +165,7 @@ billsRouter.get('/:id', requireRole(['admin', 'teller', 'customer']), async (c) 
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM billPayments WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_billPayments WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Bill payment not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);

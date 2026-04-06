@@ -102,14 +102,14 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
   const idempotencyKey = c.req.header('X-Idempotency-Key');
   if (idempotencyKey) {
     const existing = await c.env.DB.prepare(
-      `SELECT payoutRequestId FROM payoutIdempotencyKeys WHERE tenantId = ? AND idempotencyKey = ? AND expiresAt > ?`
+      `SELECT payoutRequestId FROM fint_payoutIdempotencyKeys WHERE tenantId = ? AND idempotencyKey = ? AND expiresAt > ?`
     )
       .bind(tenantId, idempotencyKey, new Date().toISOString())
       .first() as Record<string, string> | null;
 
     if (existing) {
       const payout = await c.env.DB.prepare(
-        'SELECT * FROM payoutRequests WHERE id = ? AND tenantId = ?'
+        'SELECT * FROM fint_payoutRequests WHERE id = ? AND tenantId = ?'
       )
         .bind(existing.payoutRequestId, tenantId)
         .first();
@@ -123,7 +123,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
   // QA-FIN-1: Pre-flight balance check and deduction when a source account is supplied
   if (sourceAccountId) {
     const srcAccount = await c.env.DB.prepare(
-      'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
+      'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
     ).bind(sourceAccountId, tenantId, 'active').first() as Record<string, number> | null;
 
     if (!srcAccount) {
@@ -143,7 +143,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
   let balanceDeducted = false;
   if (sourceAccountId) {
     await c.env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(amountKobo, now, sourceAccountId, tenantId).run();
     balanceDeducted = true;
   }
@@ -157,7 +157,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
 
     // Step 3: Record payout request as 'processing'
     await c.env.DB.prepare(
-      `INSERT INTO payoutRequests
+      `INSERT INTO fint_payoutRequests
          (id, tenantId, initiatorId, payoutType, amountKobo, destinationAccountNumber,
           destinationBankCode, destinationAccountName, narration, nibssReference, sourceAccountId, status, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'processing', ?, ?)`
@@ -183,7 +183,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     if (transfer.status === 'rejected') {
       // Mark as failed immediately on synchronous rejection
       await c.env.DB.prepare(
-        `UPDATE payoutRequests SET status = 'failed', failureReason = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+        `UPDATE fint_payoutRequests SET status = 'failed', failureReason = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
       )
         .bind(`NIBSS rejected: ${transfer.responseMessage} (${transfer.responseCode})`, now, id, tenantId)
         .run();
@@ -191,7 +191,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
       // Reverse balance deduction — NIBSS did not accept the transfer
       if (balanceDeducted && sourceAccountId) {
         await c.env.DB.prepare(
-          'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+          'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
         ).bind(amountKobo, now, sourceAccountId, tenantId).run();
       }
 
@@ -219,7 +219,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
 
     // Transfer accepted — update with NIBSS session ID, await webhook for final settlement
     await c.env.DB.prepare(
-      `UPDATE payoutRequests SET nibssSessionId = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_payoutRequests SET nibssSessionId = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     )
       .bind(transfer.sessionId, now, id, tenantId)
       .run();
@@ -228,7 +228,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     if (idempotencyKey) {
       const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
       await c.env.DB.prepare(
-        `INSERT OR IGNORE INTO payoutIdempotencyKeys (id, tenantId, idempotencyKey, payoutRequestId, createdAt, expiresAt)
+        `INSERT OR IGNORE INTO fint_payoutIdempotencyKeys (id, tenantId, idempotencyKey, payoutRequestId, createdAt, expiresAt)
          VALUES (?, ?, ?, ?, ?, ?)`
       )
         .bind(crypto.randomUUID(), tenantId, idempotencyKey, id, now, expiresAt)
@@ -250,7 +250,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
 
     // If row was created, mark as failed
     await c.env.DB.prepare(
-      `UPDATE payoutRequests SET status = 'failed', failureReason = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_payoutRequests SET status = 'failed', failureReason = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     )
       .bind(reason, now, id, tenantId)
       .run();
@@ -258,7 +258,7 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     // Reverse balance deduction — upstream provider unavailable (Offline Resilience)
     if (balanceDeducted && sourceAccountId) {
       await c.env.DB.prepare(
-        'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+        'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
       ).bind(amountKobo, now, sourceAccountId, tenantId).run();
     }
 
@@ -276,7 +276,7 @@ payoutsRouter.get('/reconcile', requireRole(['admin']), async (c) => {
   const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
 
   const { results } = await c.env.DB.prepare(
-    `SELECT * FROM payoutRequests
+    `SELECT * FROM fint_payoutRequests
      WHERE tenantId = ? AND status = 'processing' AND createdAt <= ?
      ORDER BY createdAt ASC LIMIT 50`
   )
@@ -299,7 +299,7 @@ payoutsRouter.get('/', requireRole(['admin']), async (c) => {
   const status = c.req.query('status');
   const payoutType = c.req.query('payoutType');
 
-  let query = 'SELECT * FROM payoutRequests WHERE tenantId = ?';
+  let query = 'SELECT * FROM fint_payoutRequests WHERE tenantId = ?';
   const params: (string | number)[] = [tenantId];
 
   if (status) {
@@ -324,7 +324,7 @@ payoutsRouter.get('/:id', requireRole(['admin']), async (c) => {
   const id = c.req.param('id');
 
   const row = await c.env.DB.prepare(
-    'SELECT * FROM payoutRequests WHERE id = ? AND tenantId = ?'
+    'SELECT * FROM fint_payoutRequests WHERE id = ? AND tenantId = ?'
   )
     .bind(id, tenantId)
     .first();
@@ -340,7 +340,7 @@ payoutsRouter.get('/:id/status', requireRole(['admin']), async (c) => {
   const id = c.req.param('id');
 
   const row = await c.env.DB.prepare(
-    'SELECT * FROM payoutRequests WHERE id = ? AND tenantId = ?'
+    'SELECT * FROM fint_payoutRequests WHERE id = ? AND tenantId = ?'
   )
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
@@ -379,7 +379,7 @@ payoutsRouter.get('/:id/status', requireRole(['admin']), async (c) => {
     }
 
     const updated = await c.env.DB.prepare(
-      'SELECT * FROM payoutRequests WHERE id = ? AND tenantId = ?'
+      'SELECT * FROM fint_payoutRequests WHERE id = ? AND tenantId = ?'
     )
       .bind(id, tenantId)
       .first();
@@ -425,7 +425,7 @@ payoutsWebhookRouter.post('/', async (c) => {
 
   // Look up the payout request by nibssReference (tenantId-agnostic — the bank doesn't know our tenants)
   const row = await c.env.DB.prepare(
-    'SELECT * FROM payoutRequests WHERE nibssReference = ?'
+    'SELECT * FROM fint_payoutRequests WHERE nibssReference = ?'
   )
     .bind(paymentReference)
     .first() as Record<string, unknown> | null;
@@ -477,7 +477,7 @@ async function applyConfirmation(
   const { id, tenantId, row, nibssSessionId, settledAt, now } = opts;
 
   await env.DB.prepare(
-    `UPDATE payoutRequests SET status = 'confirmed', nibssSessionId = ?, settledAt = ?, updatedAt = ?
+    `UPDATE fint_payoutRequests SET status = 'confirmed', nibssSessionId = ?, settledAt = ?, updatedAt = ?
      WHERE id = ? AND tenantId = ?`
   )
     .bind(nibssSessionId, settledAt, now, id, tenantId)
@@ -514,7 +514,7 @@ async function applyFailure(
   const { id, tenantId, row, reason, status, now } = opts;
 
   await env.DB.prepare(
-    `UPDATE payoutRequests SET status = ?, failureReason = ?, settledAt = ?, updatedAt = ?
+    `UPDATE fint_payoutRequests SET status = ?, failureReason = ?, settledAt = ?, updatedAt = ?
      WHERE id = ? AND tenantId = ?`
   )
     .bind(status, reason, now, now, id, tenantId)
@@ -523,7 +523,7 @@ async function applyFailure(
   // Offline Resilience: reverse the internal wallet deduction when NIBSS reports failure
   if (row.sourceAccountId) {
     await env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(row.amountKobo as number, now, row.sourceAccountId as string, tenantId).run();
   }
 

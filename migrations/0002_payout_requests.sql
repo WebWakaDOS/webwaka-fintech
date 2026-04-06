@@ -1,8 +1,8 @@
 -- Migration: 0002_payout_requests
--- Adds payoutRequests table for NIBSS NIP instant transfer tracking
+-- Adds fint_payoutRequests table for NIBSS NIP instant transfer tracking
 -- Invariant 5: Nigeria First — amountKobo is always kobo integers
 
-CREATE TABLE IF NOT EXISTS payoutRequests (
+CREATE TABLE IF NOT EXISTS fint_payoutRequests (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   initiatorId TEXT NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS payoutRequests (
   updatedAt TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_tenantId ON payoutRequests(tenantId);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_status ON payoutRequests(status);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_nibssReference ON payoutRequests(nibssReference);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_initiatorId ON payoutRequests(initiatorId);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_tenantId ON fint_payoutRequests(tenantId);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_status ON fint_payoutRequests(status);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_nibssReference ON fint_payoutRequests(nibssReference);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_initiatorId ON fint_payoutRequests(initiatorId);

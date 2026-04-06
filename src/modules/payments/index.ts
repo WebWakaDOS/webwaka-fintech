@@ -125,7 +125,7 @@ paymentsRouter.post('/refund', requireRole(['admin']), async (c) => {
 
   // Store refund record for audit trail
   await c.env.DB.prepare(
-    `INSERT INTO paystackRefunds
+    `INSERT INTO fint_paystackRefunds
        (id, tenantId, paystackRefundId, originalReference, amountKobo, currency, status, merchantNote, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
@@ -163,7 +163,7 @@ paymentsRouter.get('/refunds', requireRole(['admin', 'teller']), async (c) => {
   const tenantId = user.tenantId;
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM paystackRefunds WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 100'
+    'SELECT * FROM fint_paystackRefunds WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 100'
   )
     .bind(tenantId)
     .all();
@@ -203,7 +203,7 @@ paystackWebhookRouter.post('/', async (c) => {
   // Idempotency: skip if we've already processed this event
   const paystackEventId = (data.id as string | undefined) ?? `${event}-${Date.now()}`;
   const existingEvent = await c.env.DB.prepare(
-    'SELECT id FROM paystackEvents WHERE paystackEventId = ?'
+    'SELECT id FROM fint_paystackEvents WHERE paystackEventId = ?'
   )
     .bind(paystackEventId)
     .first();
@@ -215,7 +215,7 @@ paystackWebhookRouter.post('/', async (c) => {
 
   // Record the webhook event
   await c.env.DB.prepare(
-    `INSERT INTO paystackEvents (id, paystackEventId, event, data, processedAt, createdAt)
+    `INSERT INTO fint_paystackEvents (id, paystackEventId, event, data, processedAt, createdAt)
      VALUES (?, ?, ?, ?, ?, ?)`
   )
     .bind(crypto.randomUUID(), paystackEventId, event, JSON.stringify(data), now, now)
@@ -243,7 +243,7 @@ paystackWebhookRouter.post('/', async (c) => {
     const reference = data.transaction_reference as string | undefined;
     if (reference) {
       await c.env.DB.prepare(
-        `UPDATE paystackRefunds SET status = 'processed', updatedAt = ? WHERE originalReference = ?`
+        `UPDATE fint_paystackRefunds SET status = 'processed', updatedAt = ? WHERE originalReference = ?`
       )
         .bind(now, reference)
         .run();

@@ -5,14 +5,14 @@
  *   POST   /api/lending/credit-scores              — Compute AI credit score for a customer
  *   GET    /api/lending/credit-scores/:customerId  — Get latest credit score
  *
- *   POST   /api/lending/loans                      — Apply for a loan
- *   GET    /api/lending/loans                      — List loans (admin: all; customer: own)
- *   GET    /api/lending/loans/:id                  — Get single loan
- *   PUT    /api/lending/loans/:id/approve          — Approve loan (admin)
- *   PUT    /api/lending/loans/:id/disburse         — Disburse approved loan (admin) — auto-generates schedule
- *   GET    /api/lending/loans/:id/schedule         — Get amortization repayment schedule (FT-002)
- *   POST   /api/lending/loans/:id/repay            — Record a repayment
- *   PUT    /api/lending/loans/:id/reject           — Reject loan application (admin)
+ *   POST   /api/lending/fint_loans                      — Apply for a loan
+ *   GET    /api/lending/fint_loans                      — List fint_loans (admin: all; customer: own)
+ *   GET    /api/lending/fint_loans/:id                  — Get single loan
+ *   PUT    /api/lending/fint_loans/:id/approve          — Approve loan (admin)
+ *   PUT    /api/lending/fint_loans/:id/disburse         — Disburse approved loan (admin) — auto-generates schedule
+ *   GET    /api/lending/fint_loans/:id/schedule         — Get amortization repayment schedule (FT-002)
+ *   POST   /api/lending/fint_loans/:id/repay            — Record a repayment
+ *   PUT    /api/lending/fint_loans/:id/reject           — Reject loan application (admin)
  *
  *   POST   /api/lending/debt-collection/:loanId/remind      — Trigger SMS/email reminder
  *   POST   /api/lending/debt-collection/:loanId/auto-debit  — Attempt auto-debit
@@ -40,8 +40,8 @@ lendingRouter.post('/credit-scores', requireRole(['admin', 'teller']), async (c)
 
   const { results: txRows } = await c.env.DB.prepare(
     `SELECT t.type, t.amountKobo, t.status, t.createdAt, t.description
-     FROM transactions t
-     JOIN bankAccounts b ON t.accountId = b.id
+     FROM fint_transactions t
+     JOIN fint_bankAccounts b ON t.accountId = b.id
      WHERE b.tenantId = ? AND b.customerId = ? AND t.createdAt >= ?
      ORDER BY t.createdAt DESC LIMIT 200`
   )
@@ -74,14 +74,14 @@ lendingRouter.post('/credit-scores', requireRole(['admin', 'teller']), async (c)
       const prompt = c.env.AI_PLATFORM_URL
         ? `Analyze the following 90-day transaction history for a Nigerian bank customer and return a credit score between 0 and 1000.
 
-Transaction History (${txCount} transactions):
+Transaction History (${txCount} fint_transactions):
 ${txSummary}
 
 Return ONLY valid JSON in this exact format:
 {"score": <integer 0-1000>, "grade": "<A|B|C|D|E>", "rationale": "<2-3 sentence explanation>"}
 
 Grading: A=800-1000, B=600-799, C=400-599, D=200-399, E=0-199.
-Consider: transaction frequency, deposit/withdrawal ratio, failed transactions, average balance indicators.`
+Consider: transaction frequency, deposit/withdrawal ratio, failed fint_transactions, average balance indicators.`
         : '';
 
       if (c.env.AI_PLATFORM_URL && prompt) {
@@ -120,7 +120,7 @@ Consider: transaction frequency, deposit/withdrawal ratio, failed transactions, 
   const expiresAt = new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO creditScores (id, tenantId, customerId, score, grade, rationale, txCountAnalyzed, modelUsed, computedAt, expiresAt)
+    `INSERT INTO fint_creditScores (id, tenantId, customerId, score, grade, rationale, txCountAnalyzed, modelUsed, computedAt, expiresAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(id, tenantId, body.customerId, score, grade, rationale, txCount, modelUsed ?? null, now, expiresAt)
@@ -140,7 +140,7 @@ lendingRouter.get('/credit-scores/:customerId', requireRole(['admin', 'teller', 
 
   const now = new Date().toISOString();
   const row = await c.env.DB.prepare(
-    `SELECT * FROM creditScores WHERE tenantId = ? AND customerId = ? AND expiresAt > ?
+    `SELECT * FROM fint_creditScores WHERE tenantId = ? AND customerId = ? AND expiresAt > ?
      ORDER BY computedAt DESC LIMIT 1`
   )
     .bind(tenantId, customerId, now)
@@ -152,7 +152,7 @@ lendingRouter.get('/credit-scores/:customerId', requireRole(['admin', 'teller', 
 
 // ─── Loan Origination (#18) ───────────────────────────────────────────────────
 
-lendingRouter.post('/loans', requireRole(['admin', 'teller', 'customer']), async (c) => {
+lendingRouter.post('/fint_loans', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const body = await c.req.json<{
@@ -176,7 +176,7 @@ lendingRouter.post('/loans', requireRole(['admin', 'teller', 'customer']), async
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT id FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT id FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(accountId, tenantId, customerId, 'active')
     .first();
@@ -185,7 +185,7 @@ lendingRouter.post('/loans', requireRole(['admin', 'teller', 'customer']), async
 
   const now = new Date().toISOString();
   const creditScoreRow = await c.env.DB.prepare(
-    `SELECT score FROM creditScores WHERE tenantId = ? AND customerId = ? AND expiresAt > ? ORDER BY computedAt DESC LIMIT 1`
+    `SELECT score FROM fint_creditScores WHERE tenantId = ? AND customerId = ? AND expiresAt > ? ORDER BY computedAt DESC LIMIT 1`
   )
     .bind(tenantId, customerId, now)
     .first() as Record<string, number> | null;
@@ -196,7 +196,7 @@ lendingRouter.post('/loans', requireRole(['admin', 'teller', 'customer']), async
   const id = crypto.randomUUID();
 
   await c.env.DB.prepare(
-    `INSERT INTO loans
+    `INSERT INTO fint_loans
        (id, tenantId, customerId, accountId, principalKobo, interestRateBps, termDays,
         totalRepayableKobo, amountRepaidKobo, status, creditScoreAtOrigination, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, 'pending', ?, ?, ?)`
@@ -207,25 +207,25 @@ lendingRouter.post('/loans', requireRole(['admin', 'teller', 'customer']), async
   return c.json({ success: true, id, principalKobo, totalRepayableKobo, status: 'pending' }, 201);
 });
 
-lendingRouter.get('/loans', requireRole(['admin', 'teller', 'customer']), async (c) => {
+lendingRouter.get('/fint_loans', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM loans WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT * FROM loans WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT * FROM fint_loans WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM fint_loans WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
   return c.json({ data: results });
 });
 
-lendingRouter.get('/loans/:id', requireRole(['admin', 'teller', 'customer']), async (c) => {
+lendingRouter.get('/fint_loans/:id', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
 
@@ -236,14 +236,14 @@ lendingRouter.get('/loans/:id', requireRole(['admin', 'teller', 'customer']), as
   return c.json({ data: row });
 });
 
-lendingRouter.put('/loans/:id/approve', requireRole(['admin']), async (c) => {
+lendingRouter.put('/fint_loans/:id/approve', requireRole(['admin']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE loans SET status = 'approved', updatedAt = ? WHERE id = ? AND tenantId = ? AND status = 'pending'`
+    `UPDATE fint_loans SET status = 'approved', updatedAt = ? WHERE id = ? AND tenantId = ? AND status = 'pending'`
   )
     .bind(now, id, tenantId)
     .run();
@@ -252,7 +252,7 @@ lendingRouter.put('/loans/:id/approve', requireRole(['admin']), async (c) => {
   return c.json({ success: true, status: 'approved' });
 });
 
-lendingRouter.put('/loans/:id/reject', requireRole(['admin']), async (c) => {
+lendingRouter.put('/fint_loans/:id/reject', requireRole(['admin']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
@@ -260,7 +260,7 @@ lendingRouter.put('/loans/:id/reject', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE loans SET status = 'rejected', rejectionReason = ?, updatedAt = ?
+    `UPDATE fint_loans SET status = 'rejected', rejectionReason = ?, updatedAt = ?
      WHERE id = ? AND tenantId = ? AND status = 'pending'`
   )
     .bind(body.reason ?? 'Application rejected', now, id, tenantId)
@@ -270,13 +270,13 @@ lendingRouter.put('/loans/:id/reject', requireRole(['admin']), async (c) => {
   return c.json({ success: true, status: 'rejected' });
 });
 
-lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
+lendingRouter.put('/fint_loans/:id/disburse', requireRole(['admin']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
   const now = new Date().toISOString();
 
-  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const loan = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
 
@@ -298,7 +298,7 @@ lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
 
   const scheduleInserts = schedule.map((s) =>
     c.env.DB.prepare(
-      `INSERT INTO loanRepaymentSchedules
+      `INSERT INTO fint_loanRepaymentSchedules
          (id, tenantId, loanId, installmentNumber, dueDate, principalKobo, interestKobo, totalDueKobo, status, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)`
     ).bind(s.id, tenantId, id, s.installmentNumber, s.dueDate, s.principalKobo, s.interestKobo, s.totalDueKobo, now)
@@ -306,13 +306,13 @@ lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE loans SET status = 'disbursed', disbursedAt = ?, dueAt = ?, updatedAt = ? WHERE id = ?`
+      `UPDATE fint_loans SET status = 'disbursed', disbursedAt = ?, dueAt = ?, updatedAt = ? WHERE id = ?`
     ).bind(now, dueAt, now, id),
     c.env.DB.prepare(
-      `UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(loan.principalKobo, now, loan.accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'deposit', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, loan.accountId, loan.principalKobo, reference, `Loan disbursement — ${id}`, now),
     ...scheduleInserts,
@@ -336,14 +336,14 @@ lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
   return c.json({ success: true, status: 'disbursed', dueAt, principalKobo: loan.principalKobo, installments: schedule.length });
 });
 
-// ─── FT-002: GET /api/lending/loans/:id/schedule — Amortization schedule ─────
+// ─── FT-002: GET /api/lending/fint_loans/:id/schedule — Amortization schedule ─────
 
-lendingRouter.get('/loans/:id/schedule', requireRole(['admin', 'teller', 'customer']), async (c) => {
+lendingRouter.get('/fint_loans/:id/schedule', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const loan = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
 
@@ -353,7 +353,7 @@ lendingRouter.get('/loans/:id/schedule', requireRole(['admin', 'teller', 'custom
   }
 
   const { results } = await c.env.DB.prepare(
-    `SELECT * FROM loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? ORDER BY installmentNumber ASC`
+    `SELECT * FROM fint_loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? ORDER BY installmentNumber ASC`
   )
     .bind(tenantId, id)
     .all();
@@ -375,7 +375,7 @@ lendingRouter.get('/loans/:id/schedule', requireRole(['admin', 'teller', 'custom
   });
 });
 
-lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer']), async (c) => {
+lendingRouter.post('/fint_loans/:id/repay', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
@@ -385,7 +385,7 @@ lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer
     return c.json({ error: 'amountKobo must be a positive integer' }, 400);
   }
 
-  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const loan = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
 
@@ -398,7 +398,7 @@ lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ?'
   )
     .bind(body.accountId, tenantId)
     .first() as Record<string, number> | null;
@@ -416,29 +416,29 @@ lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE loans SET amountRepaidKobo = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_loans SET amountRepaidKobo = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(newRepaid, newStatus, now, id, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO loanRepayments (id, tenantId, loanId, amountKobo, reference, status, paidAt)
+      `INSERT INTO fint_loanRepayments (id, tenantId, loanId, amountKobo, reference, status, paidAt)
        VALUES (?, ?, ?, ?, ?, 'success', ?)`
     ).bind(crypto.randomUUID(), tenantId, id, body.amountKobo, reference, now),
     c.env.DB.prepare(
-      `UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(body.amountKobo, now, body.accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'fee', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, body.accountId, body.amountKobo, reference, `Loan repayment — ${id}`, now),
   ]);
 
   // FT-002: Mark the earliest unpaid schedule entry as paid
   const scheduleEntry = await c.env.DB.prepare(
-    `SELECT id FROM loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? AND status = 'scheduled' ORDER BY installmentNumber ASC LIMIT 1`
+    `SELECT id FROM fint_loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? AND status = 'scheduled' ORDER BY installmentNumber ASC LIMIT 1`
   ).bind(tenantId, id).first() as Record<string, unknown> | null;
 
   if (scheduleEntry) {
     await c.env.DB.prepare(
-      `UPDATE loanRepaymentSchedules SET status = 'paid', paidAt = ? WHERE id = ?`
+      `UPDATE fint_loanRepaymentSchedules SET status = 'paid', paidAt = ? WHERE id = ?`
     ).bind(now, scheduleEntry.id as string).run();
   }
 
@@ -468,7 +468,7 @@ lendingRouter.post('/debt-collection/:loanId/remind', requireRole(['admin']), as
   const loanId = c.req.param('loanId');
   const body = await c.req.json<{ type: 'sms_reminder' | 'email_reminder'; message?: string }>();
 
-  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const loan = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(loanId, tenantId)
     .first() as Record<string, unknown> | null;
 
@@ -501,7 +501,7 @@ lendingRouter.post('/debt-collection/:loanId/remind', requireRole(['admin']), as
   }
 
   await c.env.DB.prepare(
-    `INSERT INTO debtCollectionEvents (id, tenantId, loanId, customerId, type, status, message, scheduledAt, executedAt, createdAt)
+    `INSERT INTO fint_debtCollectionEvents (id, tenantId, loanId, customerId, type, status, message, scheduledAt, executedAt, createdAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   )
     .bind(id, tenantId, loanId, loan.customerId as string, body.type, deliveryStatus, message, now, now, now)
@@ -516,14 +516,14 @@ lendingRouter.post('/debt-collection/:loanId/auto-debit', requireRole(['admin'])
   const loanId = c.req.param('loanId');
   const body = await c.req.json<{ accountId: string; amountKobo: number }>();
 
-  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+  const loan = await c.env.DB.prepare('SELECT * FROM fint_loans WHERE id = ? AND tenantId = ?')
     .bind(loanId, tenantId)
     .first() as Record<string, unknown> | null;
 
   if (!loan) return c.json({ error: 'Loan not found' }, 404);
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ?'
   )
     .bind(body.accountId, tenantId)
     .first() as Record<string, number> | null;
@@ -533,7 +533,7 @@ lendingRouter.post('/debt-collection/:loanId/auto-debit', requireRole(['admin'])
 
   if (!account || account.balanceKobo < body.amountKobo) {
     await c.env.DB.prepare(
-      `INSERT INTO debtCollectionEvents (id, tenantId, loanId, customerId, type, status, amountKobo, scheduledAt, executedAt, createdAt)
+      `INSERT INTO fint_debtCollectionEvents (id, tenantId, loanId, customerId, type, status, amountKobo, scheduledAt, executedAt, createdAt)
        VALUES (?, ?, ?, ?, 'auto_debit_attempt', 'debit_failed', ?, ?, ?, ?)`
     )
       .bind(id, tenantId, loanId, loan.customerId as string, body.amountKobo, now, now, now)
@@ -548,21 +548,21 @@ lendingRouter.post('/debt-collection/:loanId/auto-debit', requireRole(['admin'])
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE loans SET amountRepaidKobo = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_loans SET amountRepaidKobo = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(newRepaid, newStatus, now, loanId, tenantId),
     c.env.DB.prepare(
-      `UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(body.amountKobo, now, body.accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'fee', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, body.accountId, body.amountKobo, reference, `Auto-debit loan repayment — ${loanId}`, now),
     c.env.DB.prepare(
-      `INSERT INTO debtCollectionEvents (id, tenantId, loanId, customerId, type, status, amountKobo, scheduledAt, executedAt, createdAt)
+      `INSERT INTO fint_debtCollectionEvents (id, tenantId, loanId, customerId, type, status, amountKobo, scheduledAt, executedAt, createdAt)
        VALUES (?, ?, ?, ?, 'auto_debit_attempt', 'deducted', ?, ?, ?, ?)`
     ).bind(id, tenantId, loanId, loan.customerId as string, body.amountKobo, now, now, now),
     c.env.DB.prepare(
-      `INSERT INTO loanRepayments (id, tenantId, loanId, amountKobo, reference, status, paidAt)
+      `INSERT INTO fint_loanRepayments (id, tenantId, loanId, amountKobo, reference, status, paidAt)
        VALUES (?, ?, ?, ?, ?, 'success', ?)`
     ).bind(crypto.randomUUID(), tenantId, loanId, body.amountKobo, reference, now),
   ]);
@@ -576,7 +576,7 @@ lendingRouter.get('/debt-collection/:loanId', requireRole(['admin']), async (c) 
   const loanId = c.req.param('loanId');
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM debtCollectionEvents WHERE tenantId = ? AND loanId = ? ORDER BY createdAt DESC'
+    'SELECT * FROM fint_debtCollectionEvents WHERE tenantId = ? AND loanId = ? ORDER BY createdAt DESC'
   )
     .bind(tenantId, loanId)
     .all();
@@ -709,7 +709,7 @@ function computeRuleBasedScore(txRows: Record<string, unknown>[]): { score: numb
 
   score = Math.max(0, Math.min(1000, score));
   const grade: CreditGrade = score >= 800 ? 'A' : score >= 600 ? 'B' : score >= 400 ? 'C' : score >= 200 ? 'D' : 'E';
-  const rationale = `Rule-based analysis: ${txRows.length} transactions in 90 days, ₦${(totalDepositsKobo / 100).toLocaleString()} deposits, ${failed.length} failed transactions.`;
+  const rationale = `Rule-based analysis: ${txRows.length} fint_transactions in 90 days, ₦${(totalDepositsKobo / 100).toLocaleString()} deposits, ${failed.length} failed fint_transactions.`;
 
   return { score, grade, rationale };
 }

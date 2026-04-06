@@ -1,7 +1,7 @@
 /**
  * Overdraft Protection Module (#6)
  *
- * Provides micro-overdraft coverage for transactions that would otherwise fail
+ * Provides micro-overdraft coverage for fint_transactions that would otherwise fail
  * due to insufficient funds. The overdraft amount is tracked and must be repaid
  * within a configurable window (default 7 days).
  *
@@ -42,7 +42,7 @@ overdraftRouter.post('/cover', requireRole(['admin', 'teller', 'customer']), asy
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(body.accountId, tenantId, body.customerId, 'active')
     .first() as Record<string, number> | null;
@@ -58,7 +58,7 @@ overdraftRouter.post('/cover', requireRole(['admin', 'teller', 'customer']), asy
   }
 
   const existingOverdraft = await c.env.DB.prepare(
-    `SELECT COUNT(*) as count FROM overdraftEvents WHERE tenantId = ? AND accountId = ? AND status = 'active'`
+    `SELECT COUNT(*) as count FROM fint_overdraftEvents WHERE tenantId = ? AND accountId = ? AND status = 'active'`
   ).bind(tenantId, body.accountId).first() as Record<string, number> | null;
 
   if ((existingOverdraft?.count ?? 0) > 0) {
@@ -73,11 +73,11 @@ overdraftRouter.post('/cover', requireRole(['admin', 'teller', 'customer']), asy
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO overdraftEvents (id, tenantId, accountId, customerId, originalTransactionRef, overdraftAmountKobo, repaymentDueAt, status, feesKobo, createdAt, updatedAt)
+      `INSERT INTO fint_overdraftEvents (id, tenantId, accountId, customerId, originalTransactionRef, overdraftAmountKobo, repaymentDueAt, status, feesKobo, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?)`
     ).bind(id, tenantId, body.accountId, body.customerId, body.transactionReference, shortfallKobo, repaymentDueAt, feesKobo, now, now),
     c.env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(shortfallKobo, now, body.accountId, tenantId),
   ]);
 
@@ -99,13 +99,13 @@ overdraftRouter.post('/:id/repay', requireRole(['admin', 'teller', 'customer']),
   const body = await c.req.json<{ accountId: string }>();
 
   const event = await c.env.DB.prepare(
-    `SELECT * FROM overdraftEvents WHERE id = ? AND tenantId = ? AND status = 'active'`
+    `SELECT * FROM fint_overdraftEvents WHERE id = ? AND tenantId = ? AND status = 'active'`
   ).bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!event) return c.json({ error: 'Active overdraft not found' }, 404);
   if (user.role === 'customer' && event.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
   const totalOwed = Number(event.overdraftAmountKobo) + Number(event.feesKobo);
-  const account = await c.env.DB.prepare('SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ?')
+  const account = await c.env.DB.prepare('SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ?')
     .bind(body.accountId, tenantId).first() as Record<string, number> | null;
 
   if (!account) return c.json({ error: 'Repayment account not found' }, 404);
@@ -116,13 +116,13 @@ overdraftRouter.post('/:id/repay', requireRole(['admin', 'teller', 'customer']),
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `UPDATE overdraftEvents SET status = 'repaid', repaidAt = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_overdraftEvents SET status = 'repaid', repaidAt = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
     ).bind(now, now, id, tenantId),
     c.env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(totalOwed, now, body.accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'fee', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, body.accountId, totalOwed, reference, 'Overdraft repayment', now),
   ]);
@@ -135,8 +135,8 @@ overdraftRouter.get('/', requireRole(['admin', 'teller', 'customer']), async (c)
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM overdraftEvents WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT * FROM overdraftEvents WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT * FROM fint_overdraftEvents WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM fint_overdraftEvents WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -148,7 +148,7 @@ overdraftRouter.get('/:id', requireRole(['admin', 'teller', 'customer']), async 
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM overdraftEvents WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_overdraftEvents WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Overdraft event not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
@@ -164,7 +164,7 @@ overdraftRouter.get('/summary/:customerId', requireRole(['admin', 'teller', 'cus
 
   const { results } = await c.env.DB.prepare(
     `SELECT status, COUNT(*) as count, SUM(overdraftAmountKobo) as totalKobo, SUM(feesKobo) as totalFeesKobo
-     FROM overdraftEvents WHERE tenantId = ? AND customerId = ? GROUP BY status`
+     FROM fint_overdraftEvents WHERE tenantId = ? AND customerId = ? GROUP BY status`
   ).bind(tenantId, customerId).all();
 
   const activeRow = (results as Record<string, unknown>[]).find((r) => r.status === 'active');

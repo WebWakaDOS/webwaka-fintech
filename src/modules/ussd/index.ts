@@ -54,14 +54,14 @@ ussdWebhookRouter.post('/session', async (c) => {
   const expiresAt = new Date(Date.now() + SESSION_TTL_SECONDS * 1000).toISOString();
 
   let session = await c.env.DB.prepare(
-    'SELECT * FROM ussdSessions WHERE sessionCode = ?'
+    'SELECT * FROM fint_ussdSessions WHERE sessionCode = ?'
   )
     .bind(sessionCode)
     .first() as Record<string, unknown> | null;
 
   if (!session) {
     await c.env.DB.prepare(
-      `INSERT INTO ussdSessions (id, tenantId, sessionCode, msisdn, state, menuPath, expiresAt, createdAt, updatedAt)
+      `INSERT INTO fint_ussdSessions (id, tenantId, sessionCode, msisdn, state, menuPath, expiresAt, createdAt, updatedAt)
        VALUES (?, '', ?, ?, 'main_menu', '[]', ?, ?, ?)`
     )
       .bind(crypto.randomUUID(), sessionCode, msisdn, expiresAt, now, now)
@@ -74,12 +74,12 @@ ussdWebhookRouter.post('/session', async (c) => {
   const response = await processUssdInput(c.env.DB, session, state, currentInput, inputs, tenantFromSession(session), now, expiresAt);
 
   if (response.endSession) {
-    await c.env.DB.prepare('DELETE FROM ussdSessions WHERE sessionCode = ?').bind(sessionCode).run();
+    await c.env.DB.prepare('DELETE FROM fint_ussdSessions WHERE sessionCode = ?').bind(sessionCode).run();
     return c.text(`END ${response.text}`, 200);
   }
 
   await c.env.DB.prepare(
-    'UPDATE ussdSessions SET state = ?, pendingAction = ?, expiresAt = ?, updatedAt = ? WHERE sessionCode = ?'
+    'UPDATE fint_ussdSessions SET state = ?, pendingAction = ?, expiresAt = ?, updatedAt = ? WHERE sessionCode = ?'
   )
     .bind(response.nextState, response.pendingAction ? JSON.stringify(response.pendingAction) : null, expiresAt, now, sessionCode)
     .run();
@@ -91,7 +91,7 @@ ussdRouter.get('/sessions', requireRole(['admin']), async (c) => {
   const tenantId = c.get('user').tenantId;
 
   const { results } = await c.env.DB.prepare(
-    `SELECT id, sessionCode, msisdn, state, expiresAt, createdAt FROM ussdSessions
+    `SELECT id, sessionCode, msisdn, state, expiresAt, createdAt FROM fint_ussdSessions
      WHERE tenantId = ? AND expiresAt > ? ORDER BY createdAt DESC LIMIT 100`
   )
     .bind(tenantId, new Date().toISOString())
@@ -127,7 +127,7 @@ async function processUssdInput(
     switch (input) {
       case '1': {
         const acct = await db.prepare(
-          `SELECT b.accountNumber, b.balanceKobo FROM bankAccounts b
+          `SELECT b.accountNumber, b.balanceKobo FROM fint_bankAccounts b
            WHERE b.tenantId = ? AND b.customerId = ? AND b.status = 'active' LIMIT 1`
         ).bind(tenantId, session.customerId ?? msisdn).first() as Record<string, unknown> | null;
 
@@ -137,13 +137,13 @@ async function processUssdInput(
       }
       case '2': {
         const { results } = await db.prepare(
-          `SELECT t.type, t.amountKobo, t.createdAt FROM transactions t
-           JOIN bankAccounts b ON t.accountId = b.id
+          `SELECT t.type, t.amountKobo, t.createdAt FROM fint_transactions t
+           JOIN fint_bankAccounts b ON t.accountId = b.id
            WHERE b.tenantId = ? AND b.customerId = ? AND t.status = 'success'
            ORDER BY t.createdAt DESC LIMIT 5`
         ).bind(tenantId, session.customerId ?? msisdn).all();
 
-        if (!results.length) return { text: 'No recent transactions found.\n\n0. Back', nextState: 'main_menu_await', endSession: false };
+        if (!results.length) return { text: 'No recent fint_transactions found.\n\n0. Back', nextState: 'main_menu_await', endSession: false };
 
         const lines = (results as Record<string, unknown>[]).map((r) =>
           `${r.type} ₦${(Number(r.amountKobo) / 100).toFixed(0)} ${(r.createdAt as string).slice(5, 10)}`
@@ -156,7 +156,7 @@ async function processUssdInput(
         return { text: 'Buy Airtime - Enter amount (₦):', nextState: 'airtime_amount', endSession: false };
       case '5': {
         const { results: goals } = await db.prepare(
-          `SELECT name, currentAmountKobo, targetAmountKobo FROM savingsGoals
+          `SELECT name, currentAmountKobo, targetAmountKobo FROM fint_savingsGoals
            WHERE tenantId = ? AND ownerId = ? AND status = 'active' LIMIT 3`
         ).bind(tenantId, session.customerId ?? msisdn).all();
 

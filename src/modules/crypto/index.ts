@@ -8,9 +8,9 @@
  *   GET    /api/crypto/rates                — Get current exchange rates
  *   POST   /api/crypto/on-ramp             — Buy crypto with NGN (NGN → crypto)
  *   POST   /api/crypto/off-ramp            — Sell crypto for NGN (crypto → NGN)
- *   GET    /api/crypto/transactions        — List crypto transactions
- *   GET    /api/crypto/transactions/:id    — Get single transaction
- *   PUT    /api/crypto/transactions/:id/confirm — Confirm external tx hash (admin)
+ *   GET    /api/crypto/fint_transactions        — List crypto fint_transactions
+ *   GET    /api/crypto/fint_transactions/:id    — Get single transaction
+ *   PUT    /api/crypto/fint_transactions/:id/confirm — Confirm external tx hash (admin)
  */
 
 import { Hono } from 'hono';
@@ -75,7 +75,7 @@ cryptoRouter.post('/on-ramp', requireRole(['admin', 'teller', 'customer']), asyn
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(body.accountId, tenantId, body.customerId, 'active')
     .first() as Record<string, number> | null;
@@ -119,14 +119,14 @@ cryptoRouter.post('/on-ramp', requireRole(['admin', 'teller', 'customer']), asyn
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO cryptoTransactions (id, tenantId, customerId, accountId, direction, cryptoCurrency, cryptoAmountUnits, fiatAmountKobo, exchangeRate, externalTxHash, status, reference, createdAt, updatedAt)
+      `INSERT INTO fint_cryptoTransactions (id, tenantId, customerId, accountId, direction, cryptoCurrency, cryptoAmountUnits, fiatAmountKobo, exchangeRate, externalTxHash, status, reference, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, 'on_ramp', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, tenantId, body.customerId, body.accountId, body.cryptoCurrency, cryptoAmountUnits, body.fiatAmountKobo, body.exchangeRate, externalTxHash, externalStatus, reference, now, now),
     c.env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(body.fiatAmountKobo, now, body.accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'withdrawal', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, body.accountId, body.fiatAmountKobo, reference, `On-ramp: ${cryptoAmountUnits} ${body.cryptoCurrency}`, now),
   ]);
@@ -180,7 +180,7 @@ cryptoRouter.post('/off-ramp', requireRole(['admin', 'teller', 'customer']), asy
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO cryptoTransactions (id, tenantId, customerId, accountId, direction, cryptoCurrency, cryptoAmountUnits, fiatAmountKobo, exchangeRate, status, reference, createdAt, updatedAt)
+      `INSERT INTO fint_cryptoTransactions (id, tenantId, customerId, accountId, direction, cryptoCurrency, cryptoAmountUnits, fiatAmountKobo, exchangeRate, status, reference, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, 'off_ramp', ?, ?, ?, ?, ?, ?, ?, ?)`
     ).bind(id, tenantId, body.customerId, body.accountId, body.cryptoCurrency, body.cryptoAmountUnits, fiatAmountKobo, body.exchangeRate, externalStatus, reference, now, now),
   ]);
@@ -188,10 +188,10 @@ cryptoRouter.post('/off-ramp', requireRole(['admin', 'teller', 'customer']), asy
   if (externalStatus === 'pending') {
     await c.env.DB.batch([
       c.env.DB.prepare(
-        'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+        'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
       ).bind(fiatAmountKobo, now, body.accountId, tenantId),
       c.env.DB.prepare(
-        `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+        `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
          VALUES (?, ?, ?, 'deposit', ?, ?, 'success', ?, ?)`
       ).bind(crypto.randomUUID(), tenantId, body.accountId, fiatAmountKobo, reference, `Off-ramp: ${body.cryptoAmountUnits} ${body.cryptoCurrency} → NGN`, now),
     ]);
@@ -200,32 +200,32 @@ cryptoRouter.post('/off-ramp', requireRole(['admin', 'teller', 'customer']), asy
   return c.json({ success: externalStatus === 'pending', id, reference, fiatAmountKobo, cryptoCurrency: body.cryptoCurrency, status: externalStatus }, 201);
 });
 
-cryptoRouter.get('/transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
+cryptoRouter.get('/fint_transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM cryptoTransactions WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC LIMIT 100'
-    : 'SELECT * FROM cryptoTransactions WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT * FROM fint_cryptoTransactions WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC LIMIT 100'
+    : 'SELECT * FROM fint_cryptoTransactions WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
   return c.json({ data: results });
 });
 
-cryptoRouter.get('/transactions/:id', requireRole(['admin', 'teller', 'customer']), async (c) => {
+cryptoRouter.get('/fint_transactions/:id', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM cryptoTransactions WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_cryptoTransactions WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Transaction not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
   return c.json({ data: row });
 });
 
-cryptoRouter.put('/transactions/:id/confirm', requireRole(['admin']), async (c) => {
+cryptoRouter.put('/fint_transactions/:id/confirm', requireRole(['admin']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
@@ -233,7 +233,7 @@ cryptoRouter.put('/transactions/:id/confirm', requireRole(['admin']), async (c) 
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE cryptoTransactions SET status = 'confirmed', externalTxHash = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_cryptoTransactions SET status = 'confirmed', externalTxHash = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(body.externalTxHash, now, id, tenantId)
     .run();

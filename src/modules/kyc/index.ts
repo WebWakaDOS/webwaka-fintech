@@ -32,7 +32,7 @@ kycRouter.get('/:customerId', requireRole(['admin', 'teller', 'customer']), asyn
   }
 
   const row = await c.env.DB.prepare(
-    'SELECT * FROM kycProfiles WHERE tenantId = ? AND customerId = ?'
+    'SELECT * FROM fint_kycProfiles WHERE tenantId = ? AND customerId = ?'
   )
     .bind(tenantId, customerId)
     .first();
@@ -63,7 +63,7 @@ kycRouter.post('/', requireRole(['admin', 'teller']), async (c) => {
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO kycProfiles
+    `INSERT INTO fint_kycProfiles
        (id, tenantId, customerId, tier, bvn, nin, addressVerified, corporateVerified,
         dailyLimitKobo, singleTxLimitKobo, monthlyLimitKobo, status, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)
@@ -100,7 +100,7 @@ kycRouter.put('/:customerId/tier', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE kycProfiles SET
+    `UPDATE fint_kycProfiles SET
        tier = ?, dailyLimitKobo = ?, singleTxLimitKobo = ?, monthlyLimitKobo = ?,
        bvn = COALESCE(?, bvn), nin = COALESCE(?, nin),
        addressVerified = COALESCE(?, addressVerified), corporateVerified = COALESCE(?, corporateVerified),
@@ -133,7 +133,7 @@ kycRouter.get('/:customerId/limits', requireRole(['admin', 'teller', 'customer']
   }
 
   const row = await c.env.DB.prepare(
-    'SELECT tier, dailyLimitKobo, singleTxLimitKobo, monthlyLimitKobo FROM kycProfiles WHERE tenantId = ? AND customerId = ?'
+    'SELECT tier, dailyLimitKobo, singleTxLimitKobo, monthlyLimitKobo FROM fint_kycProfiles WHERE tenantId = ? AND customerId = ?'
   )
     .bind(tenantId, customerId)
     .first() as Record<string, unknown> | null;
@@ -149,7 +149,7 @@ kycRouter.get('/:customerId/limits', requireRole(['admin', 'teller', 'customer']
 // ─── FT-003: POST /api/kyc/verify — Secondary identity verification via DOJAH ─
 //
 // Verifies a customer's identity using DOJAH as the secondary KYC provider.
-// Results are stored in `kycVerifications` for audit trail.
+// Results are stored in `fint_kycVerifications` for audit trail.
 // Emits a `kyc.verified` event on success.
 //
 // Supported types: bvn | nin | phone | passport | drivers_license
@@ -203,7 +203,7 @@ kycRouter.post('/verify', requireRole(['admin', 'teller']), async (c) => {
 
   // Store verification record for audit trail
   await c.env.DB.prepare(
-    `INSERT INTO kycVerifications
+    `INSERT INTO fint_kycVerifications
        (id, tenantId, customerId, verificationType, provider, status, responseData, createdAt)
      VALUES (?, ?, ?, ?, 'dojah', ?, ?, ?)`
   )
@@ -243,7 +243,7 @@ export async function checkKycLimit(
   amountKobo: number
 ): Promise<{ allowed: boolean; reason?: string }> {
   const profile = await db.prepare(
-    'SELECT tier, singleTxLimitKobo, dailyLimitKobo, monthlyLimitKobo FROM kycProfiles WHERE tenantId = ? AND customerId = ?'
+    'SELECT tier, singleTxLimitKobo, dailyLimitKobo, monthlyLimitKobo FROM fint_kycProfiles WHERE tenantId = ? AND customerId = ?'
   )
     .bind(tenantId, customerId)
     .first() as Record<string, number> | null;
@@ -260,8 +260,8 @@ export async function checkKycLimit(
 
   const today = new Date().toISOString().slice(0, 10);
   const dailyRow = await db.prepare(
-    `SELECT COALESCE(SUM(amountKobo), 0) as total FROM transactions
-     WHERE tenantId = ? AND accountId IN (SELECT id FROM bankAccounts WHERE tenantId = ? AND customerId = ?)
+    `SELECT COALESCE(SUM(amountKobo), 0) as total FROM fint_transactions
+     WHERE tenantId = ? AND accountId IN (SELECT id FROM fint_bankAccounts WHERE tenantId = ? AND customerId = ?)
      AND status = 'success' AND createdAt >= ?`
   )
     .bind(tenantId, tenantId, customerId, `${today}T00:00:00.000Z`)

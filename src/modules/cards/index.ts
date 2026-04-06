@@ -39,7 +39,7 @@ cardsRouter.post('/', requireRole(['admin', 'teller', 'customer']), async (c) =>
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT id FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT id FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(body.accountId, tenantId, body.customerId, 'active')
     .first();
@@ -91,7 +91,7 @@ cardsRouter.post('/', requireRole(['admin', 'teller', 'customer']), async (c) =>
   }
 
   await c.env.DB.prepare(
-    `INSERT INTO virtualCards
+    `INSERT INTO fint_virtualCards
        (id, tenantId, customerId, accountId, currency, maskedPan, expiryMonth, expiryYear,
         cardHolderName, status, spendingLimitKobo, externalCardId, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
@@ -108,8 +108,8 @@ cardsRouter.get('/', requireRole(['admin', 'teller', 'customer']), async (c) => 
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM virtualCards WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM virtualCards WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM fint_virtualCards WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM fint_virtualCards WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -122,7 +122,7 @@ cardsRouter.get('/:id', requireRole(['admin', 'teller', 'customer']), async (c) 
   const id = c.req.param('id');
 
   const row = await c.env.DB.prepare(
-    'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM virtualCards WHERE id = ? AND tenantId = ?'
+    'SELECT id, tenantId, customerId, currency, maskedPan, expiryMonth, expiryYear, cardHolderName, status, spendingLimitKobo, createdAt FROM fint_virtualCards WHERE id = ? AND tenantId = ?'
   )
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
@@ -147,7 +147,7 @@ cardsRouter.delete('/:id', requireRole(['admin', 'teller']), async (c) => {
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE virtualCards SET status = 'terminated', updatedAt = ? WHERE id = ? AND tenantId = ? AND status != 'terminated'`
+    `UPDATE fint_virtualCards SET status = 'terminated', updatedAt = ? WHERE id = ? AND tenantId = ? AND status != 'terminated'`
   )
     .bind(now, id, tenantId)
     .run();
@@ -163,12 +163,12 @@ cardsRouter.put('/:id/limit', requireRole(['admin', 'teller', 'customer']), asyn
   const body = await c.req.json<{ spendingLimitKobo: number | null }>();
   const now = new Date().toISOString();
 
-  const card = await c.env.DB.prepare('SELECT customerId FROM virtualCards WHERE id = ? AND tenantId = ?')
+  const card = await c.env.DB.prepare('SELECT customerId FROM fint_virtualCards WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!card) return c.json({ error: 'Card not found' }, 404);
   if (user.role === 'customer' && card.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
-  await c.env.DB.prepare('UPDATE virtualCards SET spendingLimitKobo = ?, updatedAt = ? WHERE id = ?')
+  await c.env.DB.prepare('UPDATE fint_virtualCards SET spendingLimitKobo = ?, updatedAt = ? WHERE id = ?')
     .bind(body.spendingLimitKobo ?? null, now, id)
     .run();
 
@@ -181,13 +181,13 @@ async function updateCardStatus(c: Context<{ Bindings: Bindings; Variables: AppV
   const id = c.req.param('id');
   const now = new Date().toISOString();
 
-  const card = await c.env.DB.prepare('SELECT customerId FROM virtualCards WHERE id = ? AND tenantId = ?')
+  const card = await c.env.DB.prepare('SELECT customerId FROM fint_virtualCards WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!card) return c.json({ error: 'Card not found' }, 404);
   if (user.role === 'customer' && card.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
   const result = await c.env.DB.prepare(
-    `UPDATE virtualCards SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
+    `UPDATE fint_virtualCards SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
   )
     .bind(toStatus, now, id, tenantId, fromStatus)
     .run();

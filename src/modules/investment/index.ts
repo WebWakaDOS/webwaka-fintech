@@ -9,8 +9,8 @@ investmentRouter.get('/portfolios', requireRole(['admin', 'broker', 'customer'])
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer' 
-    ? 'SELECT * FROM investmentPortfolios WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT * FROM investmentPortfolios WHERE tenantId = ? ORDER BY createdAt DESC';
+    ? 'SELECT * FROM fint_investmentPortfolios WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM fint_investmentPortfolios WHERE tenantId = ? ORDER BY createdAt DESC';
     
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
@@ -30,7 +30,7 @@ investmentRouter.post('/portfolios', requireRole(['admin', 'broker']), async (c)
   const createdAt = new Date().toISOString();
 
   await c.env.DB.prepare(
-    'INSERT INTO investmentPortfolios (id, tenantId, customerId, assetClass, principalKobo, currentValueKobo, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO fint_investmentPortfolios (id, tenantId, customerId, assetClass, principalKobo, currentValueKobo, status, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
   )
     .bind(id, tenantId, body.customerId, body.assetClass, body.principalKobo, body.principalKobo, 'active', createdAt)
     .run();

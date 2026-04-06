@@ -1,10 +1,10 @@
 /**
  * Fraud Detection Module (#9: Real-time Fraud Rules Engine)
  *
- * Applies configurable rules on transactions in real-time to flag suspicious activity.
+ * Applies configurable rules on fint_transactions in real-time to flag suspicious activity.
  *
  * Built-in rules:
- *   - velocity_breach:  >5 transactions in 10 minutes from same account
+ *   - velocity_breach:  >5 fint_transactions in 10 minutes from same account
  *   - large_amount:     Single transaction > ₦1,000,000
  *   - odd_hours:        Transaction between 01:00–04:00 local time
  *   - rapid_withdrawal: >3 withdrawals totaling >₦500k in 1 hour
@@ -29,7 +29,7 @@ fraudRouter.get('/alerts', requireRole(['admin']), async (c) => {
   const status = c.req.query('status');
   const severity = c.req.query('severity');
 
-  let query = 'SELECT * FROM fraudAlerts WHERE tenantId = ?';
+  let query = 'SELECT * FROM fint_fraudAlerts WHERE tenantId = ?';
   const params: string[] = [tenantId];
   if (status) { query += ' AND status = ?'; params.push(status); }
   if (severity) { query += ' AND severity = ?'; params.push(severity); }
@@ -44,7 +44,7 @@ fraudRouter.get('/alerts/:id', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM fraudAlerts WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_fraudAlerts WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first();
   if (!row) return c.json({ error: 'Alert not found' }, 404);
   return c.json({ data: row });
@@ -62,7 +62,7 @@ fraudRouter.put('/alerts/:id/review', requireRole(['admin']), async (c) => {
 
   const now = new Date().toISOString();
   const result = await c.env.DB.prepare(
-    `UPDATE fraudAlerts SET status = ?, reviewedBy = ?, reviewedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_fraudAlerts SET status = ?, reviewedBy = ?, reviewedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(body.action, user.userId, now, id, tenantId)
     .run();
@@ -88,7 +88,7 @@ fraudRouter.post('/check', requireRole(['admin', 'teller']), async (c) => {
     const now = new Date().toISOString();
     for (const alert of alerts) {
       await c.env.DB.prepare(
-        `INSERT INTO fraudAlerts (id, tenantId, customerId, accountId, transactionId, ruleTriggered, severity, status, details, createdAt)
+        `INSERT INTO fint_fraudAlerts (id, tenantId, customerId, accountId, transactionId, ruleTriggered, severity, status, details, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
       )
         .bind(crypto.randomUUID(), tenantId, body.customerId, body.accountId, body.transactionId ?? null, alert.rule, alert.severity, JSON.stringify(alert.details), now)
@@ -127,10 +127,10 @@ export async function runFraudRules(
     });
   }
 
-  // Rule 3: Velocity — >5 transactions in the last 10 minutes
+  // Rule 3: Velocity — >5 fint_transactions in the last 10 minutes
   const tenMinutesAgo = new Date(now.getTime() - 10 * 60 * 1000).toISOString();
   const velocityRow = await db.prepare(
-    `SELECT COUNT(*) as count FROM transactions WHERE tenantId = ? AND accountId = ? AND createdAt >= ?`
+    `SELECT COUNT(*) as count FROM fint_transactions WHERE tenantId = ? AND accountId = ? AND createdAt >= ?`
   )
     .bind(tenantId, tx.accountId, tenMinutesAgo)
     .first() as Record<string, number> | null;
@@ -147,7 +147,7 @@ export async function runFraudRules(
   if (tx.type === 'withdrawal') {
     const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000).toISOString();
     const withdrawalRow = await db.prepare(
-      `SELECT COALESCE(SUM(amountKobo), 0) as total, COUNT(*) as count FROM transactions
+      `SELECT COALESCE(SUM(amountKobo), 0) as total, COUNT(*) as count FROM fint_transactions
        WHERE tenantId = ? AND accountId = ? AND type = 'withdrawal' AND status = 'success' AND createdAt >= ?`
     )
       .bind(tenantId, tx.accountId, oneHourAgo)

@@ -1,7 +1,7 @@
 -- WebWaka Fintech Suite — D1 Database Schema
 -- Invariant 5: Nigeria First — All amounts in kobo integers
 
-CREATE TABLE IF NOT EXISTS bankAccounts (
+CREATE TABLE IF NOT EXISTS fint_bankAccounts (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountNumber TEXT NOT NULL,
@@ -12,10 +12,10 @@ CREATE TABLE IF NOT EXISTS bankAccounts (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_bankAccounts_tenantId ON bankAccounts(tenantId);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_bankAccounts_accountNumber ON bankAccounts(accountNumber);
+CREATE INDEX IF NOT EXISTS idx_bankAccounts_tenantId ON fint_bankAccounts(tenantId);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bankAccounts_accountNumber ON fint_bankAccounts(accountNumber);
 
-CREATE TABLE IF NOT EXISTS transactions (
+CREATE TABLE IF NOT EXISTS fint_transactions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountId TEXT NOT NULL,
@@ -26,10 +26,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   description TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_transactions_tenantId ON transactions(tenantId);
-CREATE INDEX IF NOT EXISTS idx_transactions_accountId ON transactions(accountId);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenantId ON fint_transactions(tenantId);
+CREATE INDEX IF NOT EXISTS idx_transactions_accountId ON fint_transactions(accountId);
 
-CREATE TABLE IF NOT EXISTS insurancePolicies (
+CREATE TABLE IF NOT EXISTS fint_insurancePolicies (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS insurancePolicies (
   endDate TEXT NOT NULL,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_insurancePolicies_tenantId ON insurancePolicies(tenantId);
+CREATE INDEX IF NOT EXISTS idx_insurancePolicies_tenantId ON fint_insurancePolicies(tenantId);
 
-CREATE TABLE IF NOT EXISTS investmentPortfolios (
+CREATE TABLE IF NOT EXISTS fint_investmentPortfolios (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -53,10 +53,10 @@ CREATE TABLE IF NOT EXISTS investmentPortfolios (
   status TEXT NOT NULL,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_investmentPortfolios_tenantId ON investmentPortfolios(tenantId);
+CREATE INDEX IF NOT EXISTS idx_investmentPortfolios_tenantId ON fint_investmentPortfolios(tenantId);
 
 -- ─── NIBSS NIP Payout Requests ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS payoutRequests (
+CREATE TABLE IF NOT EXISTS fint_payoutRequests (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   initiatorId TEXT NOT NULL,
@@ -75,15 +75,15 @@ CREATE TABLE IF NOT EXISTS payoutRequests (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_tenantId ON payoutRequests(tenantId);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_status ON payoutRequests(status);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_nibssReference ON payoutRequests(nibssReference);
-CREATE INDEX IF NOT EXISTS idx_payoutRequests_initiatorId ON payoutRequests(initiatorId);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_tenantId ON fint_payoutRequests(tenantId);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_status ON fint_payoutRequests(status);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_nibssReference ON fint_payoutRequests(nibssReference);
+CREATE INDEX IF NOT EXISTS idx_payoutRequests_initiatorId ON fint_payoutRequests(initiatorId);
 
 -- ─── KYC Profiles (#16: KYC Tier Enforcement) ────────────────────────────────
 -- tier: 1 (BVN only), 2 (BVN + address), 3 (full corporate verification)
 -- Daily/monthly limits enforced per tier per CBN guidelines
-CREATE TABLE IF NOT EXISTS kycProfiles (
+CREATE TABLE IF NOT EXISTS fint_kycProfiles (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL UNIQUE,
@@ -99,11 +99,11 @@ CREATE TABLE IF NOT EXISTS kycProfiles (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_kycProfiles_tenantId ON kycProfiles(tenantId);
-CREATE INDEX IF NOT EXISTS idx_kycProfiles_customerId ON kycProfiles(customerId);
+CREATE INDEX IF NOT EXISTS idx_kycProfiles_tenantId ON fint_kycProfiles(tenantId);
+CREATE INDEX IF NOT EXISTS idx_kycProfiles_customerId ON fint_kycProfiles(customerId);
 
 -- ─── Credit Scores (#2: AI Credit Scoring) ───────────────────────────────────
-CREATE TABLE IF NOT EXISTS creditScores (
+CREATE TABLE IF NOT EXISTS fint_creditScores (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -115,11 +115,11 @@ CREATE TABLE IF NOT EXISTS creditScores (
   computedAt TEXT NOT NULL,
   expiresAt TEXT NOT NULL  -- Scores expire after 90 days
 );
-CREATE INDEX IF NOT EXISTS idx_creditScores_tenantId ON creditScores(tenantId);
-CREATE INDEX IF NOT EXISTS idx_creditScores_customerId ON creditScores(customerId);
+CREATE INDEX IF NOT EXISTS idx_creditScores_tenantId ON fint_creditScores(tenantId);
+CREATE INDEX IF NOT EXISTS idx_creditScores_customerId ON fint_creditScores(customerId);
 
 -- ─── Loans (#18: Loan Origination System) ────────────────────────────────────
-CREATE TABLE IF NOT EXISTS loans (
+CREATE TABLE IF NOT EXISTS fint_loans (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -137,11 +137,11 @@ CREATE TABLE IF NOT EXISTS loans (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_loans_tenantId ON loans(tenantId);
-CREATE INDEX IF NOT EXISTS idx_loans_customerId ON loans(customerId);
-CREATE INDEX IF NOT EXISTS idx_loans_status ON loans(status);
+CREATE INDEX IF NOT EXISTS idx_loans_tenantId ON fint_loans(tenantId);
+CREATE INDEX IF NOT EXISTS idx_loans_customerId ON fint_loans(customerId);
+CREATE INDEX IF NOT EXISTS idx_loans_status ON fint_loans(status);
 
-CREATE TABLE IF NOT EXISTS loanRepayments (
+CREATE TABLE IF NOT EXISTS fint_loanRepayments (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   loanId TEXT NOT NULL,
@@ -150,11 +150,11 @@ CREATE TABLE IF NOT EXISTS loanRepayments (
   status TEXT NOT NULL DEFAULT 'success',
   paidAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_loanRepayments_loanId ON loanRepayments(loanId);
+CREATE INDEX IF NOT EXISTS idx_loanRepayments_loanId ON fint_loanRepayments(loanId);
 
 -- ─── Savings Goals (#5: Ajo/Esusu) ───────────────────────────────────────────
 -- type: personal | group (Ajo/Esusu)
-CREATE TABLE IF NOT EXISTS savingsGoals (
+CREATE TABLE IF NOT EXISTS fint_savingsGoals (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   ownerId TEXT NOT NULL,       -- customerId of creator
@@ -169,19 +169,19 @@ CREATE TABLE IF NOT EXISTS savingsGoals (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_savingsGoals_tenantId ON savingsGoals(tenantId);
-CREATE INDEX IF NOT EXISTS idx_savingsGoals_ownerId ON savingsGoals(ownerId);
+CREATE INDEX IF NOT EXISTS idx_savingsGoals_tenantId ON fint_savingsGoals(tenantId);
+CREATE INDEX IF NOT EXISTS idx_savingsGoals_ownerId ON fint_savingsGoals(ownerId);
 
-CREATE TABLE IF NOT EXISTS savingsGoalMembers (
+CREATE TABLE IF NOT EXISTS fint_savingsGoalMembers (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   goalId TEXT NOT NULL,
   customerId TEXT NOT NULL,
   joinedAt TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_savingsGoalMembers_unique ON savingsGoalMembers(goalId, customerId);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_savingsGoalMembers_unique ON fint_savingsGoalMembers(goalId, customerId);
 
-CREATE TABLE IF NOT EXISTS savingsGoalContributions (
+CREATE TABLE IF NOT EXISTS fint_savingsGoalContributions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   goalId TEXT NOT NULL,
@@ -191,10 +191,10 @@ CREATE TABLE IF NOT EXISTS savingsGoalContributions (
   reference TEXT NOT NULL UNIQUE,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_savingsGoalContributions_goalId ON savingsGoalContributions(goalId);
+CREATE INDEX IF NOT EXISTS idx_savingsGoalContributions_goalId ON fint_savingsGoalContributions(goalId);
 
 -- ─── Virtual Cards (#3: Virtual Card Issuance) ───────────────────────────────
-CREATE TABLE IF NOT EXISTS virtualCards (
+CREATE TABLE IF NOT EXISTS fint_virtualCards (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -210,11 +210,11 @@ CREATE TABLE IF NOT EXISTS virtualCards (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_virtualCards_tenantId ON virtualCards(tenantId);
-CREATE INDEX IF NOT EXISTS idx_virtualCards_customerId ON virtualCards(customerId);
+CREATE INDEX IF NOT EXISTS idx_virtualCards_tenantId ON fint_virtualCards(tenantId);
+CREATE INDEX IF NOT EXISTS idx_virtualCards_customerId ON fint_virtualCards(customerId);
 
 -- ─── Multi-Currency Wallets (#10) ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS multiCurrencyWallets (
+CREATE TABLE IF NOT EXISTS fint_multiCurrencyWallets (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -224,10 +224,10 @@ CREATE TABLE IF NOT EXISTS multiCurrencyWallets (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_multiCurrencyWallets_unique ON multiCurrencyWallets(tenantId, customerId, currency);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_multiCurrencyWallets_unique ON fint_multiCurrencyWallets(tenantId, customerId, currency);
 
 -- ─── Bill Payments (#7: VTPass Integration) ──────────────────────────────────
-CREATE TABLE IF NOT EXISTS billPayments (
+CREATE TABLE IF NOT EXISTS fint_billPayments (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -245,11 +245,11 @@ CREATE TABLE IF NOT EXISTS billPayments (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_billPayments_tenantId ON billPayments(tenantId);
-CREATE INDEX IF NOT EXISTS idx_billPayments_customerId ON billPayments(customerId);
+CREATE INDEX IF NOT EXISTS idx_billPayments_tenantId ON fint_billPayments(tenantId);
+CREATE INDEX IF NOT EXISTS idx_billPayments_customerId ON fint_billPayments(customerId);
 
 -- ─── Standing Orders (#14: Direct Debits) ─────────────────────────────────────
-CREATE TABLE IF NOT EXISTS standingOrders (
+CREATE TABLE IF NOT EXISTS fint_standingOrders (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -268,11 +268,11 @@ CREATE TABLE IF NOT EXISTS standingOrders (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_standingOrders_tenantId ON standingOrders(tenantId);
-CREATE INDEX IF NOT EXISTS idx_standingOrders_nextExecution ON standingOrders(nextExecutionAt);
+CREATE INDEX IF NOT EXISTS idx_standingOrders_tenantId ON fint_standingOrders(tenantId);
+CREATE INDEX IF NOT EXISTS idx_standingOrders_nextExecution ON fint_standingOrders(nextExecutionAt);
 
 -- ─── Split Payment Rules (#15) ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS splitPaymentRules (
+CREATE TABLE IF NOT EXISTS fint_splitPaymentRules (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   name TEXT NOT NULL,
@@ -281,9 +281,9 @@ CREATE TABLE IF NOT EXISTS splitPaymentRules (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_splitPaymentRules_tenantId ON splitPaymentRules(tenantId);
+CREATE INDEX IF NOT EXISTS idx_splitPaymentRules_tenantId ON fint_splitPaymentRules(tenantId);
 
-CREATE TABLE IF NOT EXISTS splitPaymentRecipients (
+CREATE TABLE IF NOT EXISTS fint_splitPaymentRecipients (
   id TEXT PRIMARY KEY,
   ruleId TEXT NOT NULL,
   tenantId TEXT NOT NULL,
@@ -291,10 +291,10 @@ CREATE TABLE IF NOT EXISTS splitPaymentRecipients (
   sharePercent INTEGER NOT NULL,  -- 0–100, all recipients must sum to 100
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_splitPaymentRecipients_ruleId ON splitPaymentRecipients(ruleId);
+CREATE INDEX IF NOT EXISTS idx_splitPaymentRecipients_ruleId ON fint_splitPaymentRecipients(ruleId);
 
 -- ─── Fraud Alerts (#9: Fraud Detection Rules Engine) ─────────────────────────
-CREATE TABLE IF NOT EXISTS fraudAlerts (
+CREATE TABLE IF NOT EXISTS fint_fraudAlerts (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -308,11 +308,11 @@ CREATE TABLE IF NOT EXISTS fraudAlerts (
   reviewedAt TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_fraudAlerts_tenantId ON fraudAlerts(tenantId);
-CREATE INDEX IF NOT EXISTS idx_fraudAlerts_status ON fraudAlerts(status);
+CREATE INDEX IF NOT EXISTS idx_fraudAlerts_tenantId ON fint_fraudAlerts(tenantId);
+CREATE INDEX IF NOT EXISTS idx_fraudAlerts_status ON fint_fraudAlerts(status);
 
 -- ─── Agent Banking / POS (#12) ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS agentTransactions (
+CREATE TABLE IF NOT EXISTS fint_agentTransactions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   agentId TEXT NOT NULL,        -- customerId of the agent
@@ -326,11 +326,11 @@ CREATE TABLE IF NOT EXISTS agentTransactions (
   status TEXT NOT NULL DEFAULT 'success',
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_agentTransactions_tenantId ON agentTransactions(tenantId);
-CREATE INDEX IF NOT EXISTS idx_agentTransactions_agentId ON agentTransactions(agentId);
+CREATE INDEX IF NOT EXISTS idx_agentTransactions_tenantId ON fint_agentTransactions(tenantId);
+CREATE INDEX IF NOT EXISTS idx_agentTransactions_agentId ON fint_agentTransactions(agentId);
 
 -- ─── Crypto On/Off Ramps (#11) ────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS cryptoTransactions (
+CREATE TABLE IF NOT EXISTS fint_cryptoTransactions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -346,11 +346,11 @@ CREATE TABLE IF NOT EXISTS cryptoTransactions (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_cryptoTransactions_tenantId ON cryptoTransactions(tenantId);
-CREATE INDEX IF NOT EXISTS idx_cryptoTransactions_customerId ON cryptoTransactions(customerId);
+CREATE INDEX IF NOT EXISTS idx_cryptoTransactions_tenantId ON fint_cryptoTransactions(tenantId);
+CREATE INDEX IF NOT EXISTS idx_cryptoTransactions_customerId ON fint_cryptoTransactions(customerId);
 
 -- ─── Debt Collection Reminders (#19) ─────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS debtCollectionEvents (
+CREATE TABLE IF NOT EXISTS fint_debtCollectionEvents (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   loanId TEXT NOT NULL,
@@ -363,25 +363,25 @@ CREATE TABLE IF NOT EXISTS debtCollectionEvents (
   executedAt TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_debtCollectionEvents_loanId ON debtCollectionEvents(loanId);
-CREATE INDEX IF NOT EXISTS idx_debtCollectionEvents_tenantId ON debtCollectionEvents(tenantId);
+CREATE INDEX IF NOT EXISTS idx_debtCollectionEvents_loanId ON fint_debtCollectionEvents(loanId);
+CREATE INDEX IF NOT EXISTS idx_debtCollectionEvents_tenantId ON fint_debtCollectionEvents(tenantId);
 
 -- ─── Open Banking API (#20) ──────────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS openBankingApps (
+CREATE TABLE IF NOT EXISTS fint_openBankingApps (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   appName TEXT NOT NULL,
   description TEXT,
   webhookUrl TEXT,
   status TEXT NOT NULL DEFAULT 'active',
-  scopes TEXT NOT NULL DEFAULT '[]',  -- JSON array: ["accounts.read", "transactions.read"]
+  scopes TEXT NOT NULL DEFAULT '[]',  -- JSON array: ["accounts.read", "fint_transactions.read"]
   createdBy TEXT NOT NULL,
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_openBankingApps_tenantId ON openBankingApps(tenantId);
+CREATE INDEX IF NOT EXISTS idx_openBankingApps_tenantId ON fint_openBankingApps(tenantId);
 
-CREATE TABLE IF NOT EXISTS openBankingApiKeys (
+CREATE TABLE IF NOT EXISTS fint_openBankingApiKeys (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   appId TEXT NOT NULL,
@@ -392,10 +392,10 @@ CREATE TABLE IF NOT EXISTS openBankingApiKeys (
   expiresAt TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_openBankingApiKeys_appId ON openBankingApiKeys(appId);
+CREATE INDEX IF NOT EXISTS idx_openBankingApiKeys_appId ON fint_openBankingApiKeys(appId);
 
 -- ─── Reconciliation Reports (#13) ─────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS reconciliationReports (
+CREATE TABLE IF NOT EXISTS fint_reconciliationReports (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   reportDate TEXT NOT NULL,     -- YYYY-MM-DD
@@ -407,11 +407,11 @@ CREATE TABLE IF NOT EXISTS reconciliationReports (
   status TEXT NOT NULL DEFAULT 'completed',
   generatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_reconciliationReports_tenantId ON reconciliationReports(tenantId);
-CREATE INDEX IF NOT EXISTS idx_reconciliationReports_date ON reconciliationReports(reportDate);
+CREATE INDEX IF NOT EXISTS idx_reconciliationReports_tenantId ON fint_reconciliationReports(tenantId);
+CREATE INDEX IF NOT EXISTS idx_reconciliationReports_date ON fint_reconciliationReports(reportDate);
 
 -- ─── CBN Regulatory Reports (#4) ──────────────────────────────────────────────
-CREATE TABLE IF NOT EXISTS cbnReports (
+CREATE TABLE IF NOT EXISTS fint_cbnReports (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   reportType TEXT NOT NULL,     -- daily_tx_summary | suspicious_tx | large_cash
@@ -422,11 +422,11 @@ CREATE TABLE IF NOT EXISTS cbnReports (
   generatedAt TEXT NOT NULL,
   submittedAt TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_cbnReports_tenantId ON cbnReports(tenantId);
-CREATE INDEX IF NOT EXISTS idx_cbnReports_type ON cbnReports(reportType);
+CREATE INDEX IF NOT EXISTS idx_cbnReports_tenantId ON fint_cbnReports(tenantId);
+CREATE INDEX IF NOT EXISTS idx_cbnReports_type ON fint_cbnReports(reportType);
 
 -- ─── Interest Accruals (#17: Interest-Bearing Accounts) ──────────────────────
-CREATE TABLE IF NOT EXISTS interestAccruals (
+CREATE TABLE IF NOT EXISTS fint_interestAccruals (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountId TEXT NOT NULL,
@@ -439,11 +439,11 @@ CREATE TABLE IF NOT EXISTS interestAccruals (
   creditedAt TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_interestAccruals_accountId ON interestAccruals(accountId);
-CREATE INDEX IF NOT EXISTS idx_interestAccruals_tenantId ON interestAccruals(tenantId);
+CREATE INDEX IF NOT EXISTS idx_interestAccruals_accountId ON fint_interestAccruals(accountId);
+CREATE INDEX IF NOT EXISTS idx_interestAccruals_tenantId ON fint_interestAccruals(tenantId);
 
 -- ─── Overdraft Events (#6: Overdraft Protection) ─────────────────────────────
-CREATE TABLE IF NOT EXISTS overdraftEvents (
+CREATE TABLE IF NOT EXISTS fint_overdraftEvents (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountId TEXT NOT NULL,
@@ -457,11 +457,11 @@ CREATE TABLE IF NOT EXISTS overdraftEvents (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_overdraftEvents_accountId ON overdraftEvents(accountId);
-CREATE INDEX IF NOT EXISTS idx_overdraftEvents_tenantId ON overdraftEvents(tenantId);
+CREATE INDEX IF NOT EXISTS idx_overdraftEvents_accountId ON fint_overdraftEvents(accountId);
+CREATE INDEX IF NOT EXISTS idx_overdraftEvents_tenantId ON fint_overdraftEvents(tenantId);
 
 -- ─── USSD Sessions (#8: USSD Banking Interface) ───────────────────────────────
-CREATE TABLE IF NOT EXISTS ussdSessions (
+CREATE TABLE IF NOT EXISTS fint_ussdSessions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   sessionCode TEXT NOT NULL UNIQUE,
@@ -474,5 +474,5 @@ CREATE TABLE IF NOT EXISTS ussdSessions (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_ussdSessions_tenantId ON ussdSessions(tenantId);
-CREATE INDEX IF NOT EXISTS idx_ussdSessions_msisdn ON ussdSessions(msisdn);
+CREATE INDEX IF NOT EXISTS idx_ussdSessions_tenantId ON fint_ussdSessions(tenantId);
+CREATE INDEX IF NOT EXISTS idx_ussdSessions_msisdn ON fint_ussdSessions(msisdn);

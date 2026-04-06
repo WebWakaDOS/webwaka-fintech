@@ -43,7 +43,7 @@ complianceRouter.post('/cbn-reports/generate', requireRole(['admin']), async (c)
          COUNT(*) as count,
          SUM(t.amountKobo) as totalKobo,
          AVG(t.amountKobo) as avgKobo
-       FROM transactions t
+       FROM fint_transactions t
        WHERE t.tenantId = ? AND t.createdAt >= ? AND t.createdAt <= ? AND t.status = 'success'
        GROUP BY t.type`
     )
@@ -52,7 +52,7 @@ complianceRouter.post('/cbn-reports/generate', requireRole(['admin']), async (c)
 
     const { results: accountStats } = await c.env.DB.prepare(
       `SELECT COUNT(*) as totalAccounts, SUM(balanceKobo) as totalBalanceKobo
-       FROM bankAccounts WHERE tenantId = ? AND status = 'active'`
+       FROM fint_bankAccounts WHERE tenantId = ? AND status = 'active'`
     )
       .bind(tenantId)
       .all();
@@ -67,10 +67,10 @@ complianceRouter.post('/cbn-reports/generate', requireRole(['admin']), async (c)
     };
 
   } else if (body.reportType === 'suspicious_tx') {
-    const { results: fraudAlerts } = await c.env.DB.prepare(
+    const { results: fint_fraudAlerts } = await c.env.DB.prepare(
       `SELECT f.*, t.amountKobo, t.type, t.reference
-       FROM fraudAlerts f
-       LEFT JOIN transactions t ON f.transactionId = t.id
+       FROM fint_fraudAlerts f
+       LEFT JOIN fint_transactions t ON f.transactionId = t.id
        WHERE f.tenantId = ? AND f.createdAt >= ? AND f.createdAt <= ?
        AND f.severity IN ('high', 'critical')
        ORDER BY f.createdAt DESC LIMIT 500`
@@ -82,18 +82,18 @@ complianceRouter.post('/cbn-reports/generate', requireRole(['admin']), async (c)
       reportType: 'suspicious_tx',
       tenantId,
       period: { start: body.periodStart, end: body.periodEnd },
-      suspiciousAlerts: fraudAlerts,
-      totalAlerts: fraudAlerts.length,
+      suspiciousAlerts: fint_fraudAlerts,
+      totalAlerts: fint_fraudAlerts.length,
       generatedAt: now,
     };
 
   } else {
-    // large_cash — transactions above ₦5,000,000 (CBN threshold for large cash reporting)
+    // large_cash — fint_transactions above ₦5,000,000 (CBN threshold for large cash reporting)
     const largeThresholdKobo = 500_000_000; // ₦5,000,000
     const { results: largeTx } = await c.env.DB.prepare(
       `SELECT t.*, b.accountNumber, b.customerId
-       FROM transactions t
-       JOIN bankAccounts b ON t.accountId = b.id
+       FROM fint_transactions t
+       JOIN fint_bankAccounts b ON t.accountId = b.id
        WHERE t.tenantId = ? AND t.createdAt >= ? AND t.createdAt <= ?
        AND t.amountKobo >= ? AND t.status = 'success'
        ORDER BY t.amountKobo DESC LIMIT 500`
@@ -114,7 +114,7 @@ complianceRouter.post('/cbn-reports/generate', requireRole(['admin']), async (c)
 
   const id = crypto.randomUUID();
   await c.env.DB.prepare(
-    `INSERT INTO cbnReports (id, tenantId, reportType, periodStart, periodEnd, payload, status, generatedAt)
+    `INSERT INTO fint_cbnReports (id, tenantId, reportType, periodStart, periodEnd, payload, status, generatedAt)
      VALUES (?, ?, ?, ?, ?, ?, 'generated', ?)`
   )
     .bind(id, tenantId, body.reportType, body.periodStart, body.periodEnd, JSON.stringify(payload), now)
@@ -128,7 +128,7 @@ complianceRouter.get('/cbn-reports', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
   const reportType = c.req.query('reportType');
 
-  let query = 'SELECT id, tenantId, reportType, periodStart, periodEnd, status, generatedAt, submittedAt FROM cbnReports WHERE tenantId = ?';
+  let query = 'SELECT id, tenantId, reportType, periodStart, periodEnd, status, generatedAt, submittedAt FROM fint_cbnReports WHERE tenantId = ?';
   const params: string[] = [tenantId];
   if (reportType) { query += ' AND reportType = ?'; params.push(reportType); }
   query += ' ORDER BY generatedAt DESC LIMIT 100';
@@ -142,7 +142,7 @@ complianceRouter.get('/cbn-reports/:id', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM cbnReports WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_cbnReports WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first();
   if (!row) return c.json({ error: 'Report not found' }, 404);
   return c.json({ data: row });
@@ -155,7 +155,7 @@ complianceRouter.put('/cbn-reports/:id/submit', requireRole(['admin']), async (c
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE cbnReports SET status = 'submitted', submittedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_cbnReports SET status = 'submitted', submittedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(now, id, tenantId)
     .run();
@@ -177,7 +177,7 @@ complianceRouter.post('/reconciliation/run', requireRole(['admin']), async (c) =
 
   const { results: txRows } = await c.env.DB.prepare(
     `SELECT type, status, SUM(amountKobo) as totalKobo, COUNT(*) as count
-     FROM transactions WHERE tenantId = ? AND createdAt >= ? AND createdAt <= ?
+     FROM fint_transactions WHERE tenantId = ? AND createdAt >= ? AND createdAt <= ?
      GROUP BY type, status`
   )
     .bind(tenantId, periodStart, periodEnd)
@@ -197,7 +197,7 @@ complianceRouter.post('/reconciliation/run', requireRole(['admin']), async (c) =
   }
 
   const { results: accountRows } = await c.env.DB.prepare(
-    'SELECT SUM(balanceKobo) as totalBalance, COUNT(*) as count FROM bankAccounts WHERE tenantId = ? AND status = ?'
+    'SELECT SUM(balanceKobo) as totalBalance, COUNT(*) as count FROM fint_bankAccounts WHERE tenantId = ? AND status = ?'
   )
     .bind(tenantId, 'active')
     .all();
@@ -206,7 +206,7 @@ complianceRouter.post('/reconciliation/run', requireRole(['admin']), async (c) =
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO reconciliationReports (id, tenantId, reportDate, totalTransactions, totalDebitsKobo, totalCreditsKobo, discrepanciesFound, discrepancies, status, generatedAt)
+    `INSERT INTO fint_reconciliationReports (id, tenantId, reportDate, totalTransactions, totalDebitsKobo, totalCreditsKobo, discrepanciesFound, discrepancies, status, generatedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'completed', ?)`
   )
     .bind(id, tenantId, reportDate, totalTransactions, totalDebitsKobo, totalCreditsKobo, discrepancies.length, JSON.stringify(discrepancies), now)
@@ -231,7 +231,7 @@ complianceRouter.get('/reconciliation', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, tenantId, reportDate, totalTransactions, totalDebitsKobo, totalCreditsKobo, discrepanciesFound, status, generatedAt FROM reconciliationReports WHERE tenantId = ? ORDER BY reportDate DESC LIMIT 100'
+    'SELECT id, tenantId, reportDate, totalTransactions, totalDebitsKobo, totalCreditsKobo, discrepanciesFound, status, generatedAt FROM fint_reconciliationReports WHERE tenantId = ? ORDER BY reportDate DESC LIMIT 100'
   )
     .bind(tenantId)
     .all();
@@ -244,7 +244,7 @@ complianceRouter.get('/reconciliation/:id', requireRole(['admin']), async (c) =>
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM reconciliationReports WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_reconciliationReports WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first();
   if (!row) return c.json({ error: 'Report not found' }, 404);
   return c.json({ data: row });

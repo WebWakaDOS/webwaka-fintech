@@ -39,7 +39,7 @@ splitPaymentsRouter.post('/rules', requireRole(['admin', 'teller']), async (c) =
     return c.json({ error: 'Each recipient sharePercent must be between 1 and 100' }, 400);
   }
 
-  const source = await c.env.DB.prepare('SELECT id FROM bankAccounts WHERE id = ? AND tenantId = ?')
+  const source = await c.env.DB.prepare('SELECT id FROM fint_bankAccounts WHERE id = ? AND tenantId = ?')
     .bind(body.sourceAccountId, tenantId).first();
   if (!source) return c.json({ error: 'Source account not found' }, 404);
 
@@ -47,7 +47,7 @@ splitPaymentsRouter.post('/rules', requireRole(['admin', 'teller']), async (c) =
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO splitPaymentRules (id, tenantId, name, sourceAccountId, status, createdAt, updatedAt)
+    `INSERT INTO fint_splitPaymentRules (id, tenantId, name, sourceAccountId, status, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, 'active', ?, ?)`
   )
     .bind(id, tenantId, body.name, body.sourceAccountId, now, now)
@@ -55,7 +55,7 @@ splitPaymentsRouter.post('/rules', requireRole(['admin', 'teller']), async (c) =
 
   for (const recipient of body.recipients) {
     await c.env.DB.prepare(
-      'INSERT INTO splitPaymentRecipients (id, ruleId, tenantId, destinationAccountId, sharePercent, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
+      'INSERT INTO fint_splitPaymentRecipients (id, ruleId, tenantId, destinationAccountId, sharePercent, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
     )
       .bind(crypto.randomUUID(), id, tenantId, recipient.destinationAccountId, recipient.sharePercent, now)
       .run();
@@ -69,7 +69,7 @@ splitPaymentsRouter.get('/rules', requireRole(['admin', 'teller']), async (c) =>
   const tenantId = user.tenantId;
 
   const { results: rules } = await c.env.DB.prepare(
-    'SELECT * FROM splitPaymentRules WHERE tenantId = ? ORDER BY createdAt DESC'
+    'SELECT * FROM fint_splitPaymentRules WHERE tenantId = ? ORDER BY createdAt DESC'
   )
     .bind(tenantId)
     .all();
@@ -77,7 +77,7 @@ splitPaymentsRouter.get('/rules', requireRole(['admin', 'teller']), async (c) =>
   const enriched = await Promise.all(
     (rules as Record<string, unknown>[]).map(async (rule) => {
       const { results: recipients } = await c.env.DB.prepare(
-        'SELECT * FROM splitPaymentRecipients WHERE ruleId = ?'
+        'SELECT * FROM fint_splitPaymentRecipients WHERE ruleId = ?'
       ).bind(rule.id).all();
       return { ...rule, recipients };
     })
@@ -91,12 +91,12 @@ splitPaymentsRouter.get('/rules/:id', requireRole(['admin', 'teller']), async (c
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const rule = await c.env.DB.prepare('SELECT * FROM splitPaymentRules WHERE id = ? AND tenantId = ?')
+  const rule = await c.env.DB.prepare('SELECT * FROM fint_splitPaymentRules WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!rule) return c.json({ error: 'Split rule not found' }, 404);
 
   const { results: recipients } = await c.env.DB.prepare(
-    'SELECT * FROM splitPaymentRecipients WHERE ruleId = ?'
+    'SELECT * FROM fint_splitPaymentRecipients WHERE ruleId = ?'
   ).bind(id).all();
 
   return c.json({ data: { ...rule, recipients } });
@@ -109,7 +109,7 @@ splitPaymentsRouter.delete('/rules/:id', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE splitPaymentRules SET status = 'inactive', updatedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_splitPaymentRules SET status = 'inactive', updatedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(now, id, tenantId)
     .run();
@@ -130,12 +130,12 @@ splitPaymentsRouter.post('/apply', requireRole(['admin', 'teller']), async (c) =
     return c.json({ error: 'incomingAmountKobo must be a positive integer' }, 400);
   }
 
-  const rule = await c.env.DB.prepare(`SELECT * FROM splitPaymentRules WHERE id = ? AND tenantId = ? AND status = 'active'`)
+  const rule = await c.env.DB.prepare(`SELECT * FROM fint_splitPaymentRules WHERE id = ? AND tenantId = ? AND status = 'active'`)
     .bind(body.ruleId, tenantId).first() as Record<string, unknown> | null;
   if (!rule) return c.json({ error: 'Active split rule not found' }, 404);
 
   const { results: recipients } = await c.env.DB.prepare(
-    'SELECT * FROM splitPaymentRecipients WHERE ruleId = ?'
+    'SELECT * FROM fint_splitPaymentRecipients WHERE ruleId = ?'
   ).bind(body.ruleId).all();
 
   const now = new Date().toISOString();
@@ -155,10 +155,10 @@ splitPaymentsRouter.post('/apply', requireRole(['admin', 'teller']), async (c) =
 
     await c.env.DB.batch([
       c.env.DB.prepare(
-        'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+        'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
       ).bind(amountKobo, now, recipient.destinationAccountId, tenantId),
       c.env.DB.prepare(
-        `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+        `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
          VALUES (?, ?, ?, 'deposit', ?, ?, 'success', ?, ?)`
       ).bind(crypto.randomUUID(), tenantId, recipient.destinationAccountId, amountKobo, reference, description, now),
     ]);

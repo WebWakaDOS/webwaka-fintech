@@ -513,7 +513,7 @@ export interface DebtCollectionEvent {
 
 export type OpenBankingScope =
   | 'accounts.read'
-  | 'transactions.read'
+  | 'fint_transactions.read'
   | 'balances.read'
   | 'payments.initiate';
 

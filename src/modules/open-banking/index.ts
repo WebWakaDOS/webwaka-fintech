@@ -6,7 +6,7 @@
  *
  * Supported scopes:
  *   accounts.read       — Read bank account details
- *   transactions.read   — Read transaction history
+ *   fint_transactions.read   — Read transaction history
  *   balances.read       — Read account balances
  *   payments.initiate   — Initiate outbound payments
  *
@@ -20,7 +20,7 @@
  *   GET    /api/open-banking/apps/:id/keys     — List API keys (prefixes only)
  *
  *   GET    /api/open-banking/data/accounts     — Third-party: read accounts (API key auth)
- *   GET    /api/open-banking/data/transactions — Third-party: read transactions (API key auth)
+ *   GET    /api/open-banking/data/fint_transactions — Third-party: read fint_transactions (API key auth)
  *   GET    /api/open-banking/data/balances     — Third-party: read balances (API key auth)
  */
 
@@ -38,7 +38,7 @@ import {
 
 export const openBankingRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
-const VALID_SCOPES: OpenBankingScope[] = ['accounts.read', 'transactions.read', 'balances.read', 'payments.initiate'];
+const VALID_SCOPES: OpenBankingScope[] = ['accounts.read', 'fint_transactions.read', 'balances.read', 'payments.initiate'];
 
 openBankingRouter.post('/apps', requireRole(['admin']), async (c) => {
   const user = c.get('user');
@@ -62,7 +62,7 @@ openBankingRouter.post('/apps', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO openBankingApps (id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt, updatedAt)
+    `INSERT INTO fint_openBankingApps (id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt, updatedAt)
      VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?)`
   )
     .bind(id, tenantId, body.appName, body.description ?? null, body.webhookUrl ?? null, JSON.stringify(body.scopes), user.userId, now, now)
@@ -76,7 +76,7 @@ openBankingRouter.get('/apps', requireRole(['admin']), async (c) => {
   const tenantId = user.tenantId;
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt FROM openBankingApps WHERE tenantId = ? ORDER BY createdAt DESC'
+    'SELECT id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt FROM fint_openBankingApps WHERE tenantId = ? ORDER BY createdAt DESC'
   )
     .bind(tenantId)
     .all();
@@ -89,7 +89,7 @@ openBankingRouter.get('/apps/:id', requireRole(['admin']), async (c) => {
   const id = c.req.param('id');
 
   const row = await c.env.DB.prepare(
-    'SELECT id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt FROM openBankingApps WHERE id = ? AND tenantId = ?'
+    'SELECT id, tenantId, appName, description, webhookUrl, status, scopes, createdBy, createdAt FROM fint_openBankingApps WHERE id = ? AND tenantId = ?'
   )
     .bind(id, tenantId).first();
   if (!row) return c.json({ error: 'App not found' }, 404);
@@ -103,7 +103,7 @@ openBankingRouter.delete('/apps/:id', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE openBankingApps SET status = 'revoked', updatedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_openBankingApps SET status = 'revoked', updatedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(now, id, tenantId)
     .run();
@@ -111,7 +111,7 @@ openBankingRouter.delete('/apps/:id', requireRole(['admin']), async (c) => {
   if (!result.meta.changes) return c.json({ error: 'App not found' }, 404);
 
   await c.env.DB.prepare(
-    `UPDATE openBankingApiKeys SET status = 'revoked' WHERE appId = ? AND tenantId = ?`
+    `UPDATE fint_openBankingApiKeys SET status = 'revoked' WHERE appId = ? AND tenantId = ?`
   )
     .bind(id, tenantId)
     .run();
@@ -125,7 +125,7 @@ openBankingRouter.post('/apps/:id/keys', requireRole(['admin']), async (c) => {
   const appId = c.req.param('id');
   const body = await c.req.json<{ expiresAt?: string }>().catch(() => ({}));
 
-  const app = await c.env.DB.prepare(`SELECT id FROM openBankingApps WHERE id = ? AND tenantId = ? AND status = 'active'`)
+  const app = await c.env.DB.prepare(`SELECT id FROM fint_openBankingApps WHERE id = ? AND tenantId = ? AND status = 'active'`)
     .bind(appId, tenantId).first();
   if (!app) return c.json({ error: 'Active app not found' }, 404);
 
@@ -137,7 +137,7 @@ openBankingRouter.post('/apps/:id/keys', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO openBankingApiKeys (id, tenantId, appId, keyHash, keyPrefix, status, expiresAt, createdAt)
+    `INSERT INTO fint_openBankingApiKeys (id, tenantId, appId, keyHash, keyPrefix, status, expiresAt, createdAt)
      VALUES (?, ?, ?, ?, ?, 'active', ?, ?)`
   )
     .bind(id, tenantId, appId, keyHash, keyPrefix, (body as Record<string, string>).expiresAt ?? null, now)
@@ -158,7 +158,7 @@ openBankingRouter.get('/apps/:id/keys', requireRole(['admin']), async (c) => {
   const appId = c.req.param('id');
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, appId, keyPrefix, status, lastUsedAt, expiresAt, createdAt FROM openBankingApiKeys WHERE appId = ? AND tenantId = ?'
+    'SELECT id, appId, keyPrefix, status, lastUsedAt, expiresAt, createdAt FROM fint_openBankingApiKeys WHERE appId = ? AND tenantId = ?'
   )
     .bind(appId, tenantId)
     .all();
@@ -172,7 +172,7 @@ openBankingRouter.delete('/apps/:appId/keys/:keyId', requireRole(['admin']), asy
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE openBankingApiKeys SET status = 'revoked' WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_openBankingApiKeys SET status = 'revoked' WHERE id = ? AND tenantId = ?`
   )
     .bind(keyId, tenantId)
     .run();
@@ -192,7 +192,7 @@ openBankingRouter.get('/data/accounts', async (c) => {
   if (!customerId) return c.json({ error: 'customerId query parameter is required' }, 400);
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, accountNumber, accountType, status, createdAt FROM bankAccounts WHERE tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT id, accountNumber, accountType, status, createdAt FROM fint_bankAccounts WHERE tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(tenantId, customerId, 'active')
     .all();
@@ -208,17 +208,17 @@ openBankingRouter.get('/data/balances', async (c) => {
   if (!customerId) return c.json({ error: 'customerId query parameter is required' }, 400);
 
   const { results } = await c.env.DB.prepare(
-    'SELECT id, accountNumber, accountType, balanceKobo, status FROM bankAccounts WHERE tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT id, accountNumber, accountType, balanceKobo, status FROM fint_bankAccounts WHERE tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(tenantId, customerId, 'active')
     .all();
   return c.json({ data: results });
 });
 
-openBankingRouter.get('/data/transactions', async (c) => {
+openBankingRouter.get('/data/fint_transactions', async (c) => {
   const { tenantId, scopes } = await resolveApiKey(c);
   if (!tenantId) return c.json({ error: 'Invalid or missing API key' }, 401);
-  if (!scopes.includes('transactions.read')) return c.json({ error: 'Insufficient scope. Requires: transactions.read' }, 403);
+  if (!scopes.includes('fint_transactions.read')) return c.json({ error: 'Insufficient scope. Requires: fint_transactions.read' }, 403);
 
   const customerId = c.req.query('customerId');
   const accountId = c.req.query('accountId');
@@ -226,8 +226,8 @@ openBankingRouter.get('/data/transactions', async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT t.id, t.type, t.amountKobo, t.status, t.description, t.createdAt
-     FROM transactions t
-     JOIN bankAccounts b ON t.accountId = b.id
+     FROM fint_transactions t
+     JOIN fint_bankAccounts b ON t.accountId = b.id
      WHERE t.tenantId = ? AND b.customerId = ? AND t.accountId = ?
      ORDER BY t.createdAt DESC LIMIT 100`
   )
@@ -246,8 +246,8 @@ async function resolveApiKey(c: Context<{ Bindings: Bindings; Variables: AppVari
 
   const keyRow = await c.env.DB.prepare(
     `SELECT k.id, k.tenantId, k.appId, k.status, k.expiresAt, a.scopes, a.status as appStatus
-     FROM openBankingApiKeys k
-     JOIN openBankingApps a ON k.appId = a.id
+     FROM fint_openBankingApiKeys k
+     JOIN fint_openBankingApps a ON k.appId = a.id
      WHERE k.keyHash = ?`
   )
     .bind(keyHash)
@@ -260,7 +260,7 @@ async function resolveApiKey(c: Context<{ Bindings: Bindings; Variables: AppVari
     return { tenantId: null, scopes: [] };
   }
 
-  await c.env.DB.prepare('UPDATE openBankingApiKeys SET lastUsedAt = ? WHERE id = ?')
+  await c.env.DB.prepare('UPDATE fint_openBankingApiKeys SET lastUsedAt = ? WHERE id = ?')
     .bind(new Date().toISOString(), keyRow.id as string)
     .run();
 
@@ -284,7 +284,7 @@ async function hashKey(key: string): Promise<string> {
 //   2. POST /api/open-banking/mono/exchange       → exchange mono code → accountId, store account
 //   3. GET  /api/open-banking/mono/accounts       → list linked external accounts
 //   4. GET  /api/open-banking/mono/accounts/:id/balance       → current balance
-//   5. GET  /api/open-banking/mono/accounts/:id/transactions  → transaction history
+//   5. GET  /api/open-banking/mono/accounts/:id/fint_transactions  → transaction history
 //   6. DELETE /api/open-banking/mono/accounts/:id             → unlink account
 
 function monoCredsFromEnv(env: Bindings): MonoConfig {
@@ -308,7 +308,7 @@ openBankingRouter.post('/mono/consent', requireRole(['admin', 'teller', 'custome
 
   // Store pending consent record
   await c.env.DB.prepare(
-    `INSERT INTO monoConsents (id, tenantId, customerId, status, createdAt, updatedAt)
+    `INSERT INTO fint_monoConsents (id, tenantId, customerId, status, createdAt, updatedAt)
      VALUES (?, ?, ?, 'pending', ?, ?)`
   )
     .bind(consentId, tenantId, body.customerId, now, now)
@@ -347,7 +347,7 @@ openBankingRouter.post('/mono/exchange', requireRole(['admin', 'teller', 'custom
 
   // Store linked external account
   await c.env.DB.prepare(
-    `INSERT INTO externalBankAccounts
+    `INSERT INTO fint_externalBankAccounts
        (id, tenantId, customerId, provider, providerAccountId, bankName, accountName,
         accountNumber, currency, balanceMinorUnits, lastSyncAt, status, createdAt, updatedAt)
      VALUES (?, ?, ?, 'mono', ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`
@@ -371,7 +371,7 @@ openBankingRouter.post('/mono/exchange', requireRole(['admin', 'teller', 'custom
   // Update consent to active if consentId was provided
   if (body.consentId) {
     await c.env.DB.prepare(
-      `UPDATE monoConsents SET monoAccountId = ?, status = 'active', updatedAt = ? WHERE id = ? AND tenantId = ?`
+      `UPDATE fint_monoConsents SET monoAccountId = ?, status = 'active', updatedAt = ? WHERE id = ? AND tenantId = ?`
     )
       .bind(monoAccountId, now, body.consentId, tenantId)
       .run();
@@ -409,7 +409,7 @@ openBankingRouter.get('/mono/accounts', requireRole(['admin', 'teller', 'custome
     return c.json({ error: 'Forbidden' }, 403);
   }
 
-  let query = `SELECT * FROM externalBankAccounts WHERE tenantId = ? AND provider = 'mono' AND status = 'active'`;
+  let query = `SELECT * FROM fint_externalBankAccounts WHERE tenantId = ? AND provider = 'mono' AND status = 'active'`;
   const params: string[] = [tenantId];
   if (customerId) {
     query += ' AND customerId = ?';
@@ -432,7 +432,7 @@ openBankingRouter.get('/mono/accounts/:id/balance', requireRole(['admin', 'telle
   }
 
   const record = await c.env.DB.prepare(
-    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+    `SELECT * FROM fint_externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
   )
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
@@ -446,7 +446,7 @@ openBankingRouter.get('/mono/accounts/:id/balance', requireRole(['admin', 'telle
 
   // Update cached balance
   await c.env.DB.prepare(
-    `UPDATE externalBankAccounts SET balanceMinorUnits = ?, lastSyncAt = ?, updatedAt = ? WHERE id = ?`
+    `UPDATE fint_externalBankAccounts SET balanceMinorUnits = ?, lastSyncAt = ?, updatedAt = ? WHERE id = ?`
   )
     .bind(balanceResult.balance, now, now, id)
     .run();
@@ -459,8 +459,8 @@ openBankingRouter.get('/mono/accounts/:id/balance', requireRole(['admin', 'telle
   });
 });
 
-// GET /api/open-banking/mono/accounts/:id/transactions — Transaction history
-openBankingRouter.get('/mono/accounts/:id/transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
+// GET /api/open-banking/mono/accounts/:id/fint_transactions — Transaction history
+openBankingRouter.get('/mono/accounts/:id/fint_transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
@@ -472,7 +472,7 @@ openBankingRouter.get('/mono/accounts/:id/transactions', requireRole(['admin', '
   }
 
   const record = await c.env.DB.prepare(
-    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+    `SELECT * FROM fint_externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
   )
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
@@ -483,7 +483,7 @@ openBankingRouter.get('/mono/accounts/:id/transactions', requireRole(['admin', '
   const creds = monoCredsFromEnv(c.env);
   const txResult = await getTransactions(creds, record.providerAccountId as string, { start, end });
 
-  return c.json({ data: txResult.transactions, total: txResult.total });
+  return c.json({ data: txResult.fint_transactions, total: txResult.total });
 });
 
 // DELETE /api/open-banking/mono/accounts/:id — Unlink external account
@@ -493,7 +493,7 @@ openBankingRouter.delete('/mono/accounts/:id', requireRole(['admin', 'customer']
   const id = c.req.param('id');
 
   const record = await c.env.DB.prepare(
-    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+    `SELECT * FROM fint_externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
   )
     .bind(id, tenantId)
     .first() as Record<string, unknown> | null;
@@ -503,7 +503,7 @@ openBankingRouter.delete('/mono/accounts/:id', requireRole(['admin', 'customer']
 
   const now = new Date().toISOString();
   await c.env.DB.prepare(
-    `UPDATE externalBankAccounts SET status = 'unlinked', updatedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_externalBankAccounts SET status = 'unlinked', updatedAt = ? WHERE id = ? AND tenantId = ?`
   )
     .bind(now, id, tenantId)
     .run();

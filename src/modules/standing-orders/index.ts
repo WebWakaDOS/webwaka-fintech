@@ -56,7 +56,7 @@ standingOrdersRouter.post('/', requireRole(['admin', 'teller', 'customer']), asy
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT id FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT id FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(sourceAccountId, tenantId, customerId, 'active')
     .first();
@@ -68,7 +68,7 @@ standingOrdersRouter.post('/', requireRole(['admin', 'teller', 'customer']), asy
   const now = new Date().toISOString();
 
   await c.env.DB.prepare(
-    `INSERT INTO standingOrders
+    `INSERT INTO fint_standingOrders
        (id, tenantId, customerId, sourceAccountId, destinationAccountNumber, destinationBankCode,
         destinationAccountName, amountKobo, narration, frequencyDays, status, nextExecutionAt,
         executionCount, maxExecutions, createdAt, updatedAt)
@@ -85,8 +85,8 @@ standingOrdersRouter.get('/', requireRole(['admin', 'teller', 'customer']), asyn
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM standingOrders WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT * FROM standingOrders WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
+    ? 'SELECT * FROM fint_standingOrders WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM fint_standingOrders WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 200';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -98,7 +98,7 @@ standingOrdersRouter.get('/:id', requireRole(['admin', 'teller', 'customer']), a
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM standingOrders WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_standingOrders WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Standing order not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
@@ -119,13 +119,13 @@ standingOrdersRouter.delete('/:id', requireRole(['admin', 'teller', 'customer'])
   const id = c.req.param('id');
   const now = new Date().toISOString();
 
-  const row = await c.env.DB.prepare('SELECT customerId FROM standingOrders WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT customerId FROM fint_standingOrders WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Standing order not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
   await c.env.DB.prepare(
-    `UPDATE standingOrders SET status = 'cancelled', updatedAt = ? WHERE id = ? AND tenantId = ?`
+    `UPDATE fint_standingOrders SET status = 'cancelled', updatedAt = ? WHERE id = ? AND tenantId = ?`
   ).bind(now, id, tenantId).run();
   return c.json({ success: true });
 });
@@ -136,7 +136,7 @@ standingOrdersRouter.post('/process-due', requireRole(['admin']), async (c) => {
   const now = new Date().toISOString();
 
   const { results: dueOrders } = await c.env.DB.prepare(
-    `SELECT * FROM standingOrders
+    `SELECT * FROM fint_standingOrders
      WHERE tenantId = ? AND status = 'active' AND nextExecutionAt <= ?
      AND (maxExecutions IS NULL OR executionCount < maxExecutions)
      LIMIT 50`
@@ -152,7 +152,7 @@ standingOrdersRouter.post('/process-due', requireRole(['admin']), async (c) => {
 
     try {
       const account = await c.env.DB.prepare(
-        'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
+        'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
       )
         .bind(order.sourceAccountId, tenantId, 'active')
         .first() as Record<string, number> | null;
@@ -169,14 +169,14 @@ standingOrdersRouter.post('/process-due', requireRole(['admin']), async (c) => {
 
       await c.env.DB.batch([
         c.env.DB.prepare(
-          'UPDATE bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+          'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
         ).bind(order.amountKobo, now, order.sourceAccountId, tenantId),
         c.env.DB.prepare(
-          `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+          `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
            VALUES (?, ?, ?, 'transfer', ?, ?, 'success', ?, ?)`
         ).bind(crypto.randomUUID(), tenantId, order.sourceAccountId, order.amountKobo, reference, `Standing order: ${order.narration}`, now),
         c.env.DB.prepare(
-          `UPDATE standingOrders SET executionCount = ?, lastExecutedAt = ?, nextExecutionAt = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
+          `UPDATE fint_standingOrders SET executionCount = ?, lastExecutedAt = ?, nextExecutionAt = ?, status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?`
         ).bind(newCount, now, nextExecution, newStatus, now, id, tenantId),
       ]);
 
@@ -196,13 +196,13 @@ async function setOrderStatus(c: Context<{ Bindings: Bindings; Variables: AppVar
   const id = c.req.param('id');
   const now = new Date().toISOString();
 
-  const row = await c.env.DB.prepare('SELECT customerId FROM standingOrders WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT customerId FROM fint_standingOrders WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Standing order not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
   const result = await c.env.DB.prepare(
-    `UPDATE standingOrders SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
+    `UPDATE fint_standingOrders SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
   ).bind(to, now, id, tenantId, from).run();
 
   if (!result.meta.changes) return c.json({ error: `Order not found or not in ${from} state` }, 400);

@@ -22,19 +22,19 @@ interface MutationQueueEntry {
 }
 
 export class FintechOfflineDB extends Dexie {
-  bankAccounts!: Table<BankAccount>;
-  transactions!: Table<Transaction>;
-  insurancePolicies!: Table<InsurancePolicy>;
-  investmentPortfolios!: Table<InvestmentPortfolio>;
+  fint_bankAccounts!: Table<BankAccount>;
+  fint_transactions!: Table<Transaction>;
+  fint_insurancePolicies!: Table<InsurancePolicy>;
+  fint_investmentPortfolios!: Table<InvestmentPortfolio>;
   mutationQueue!: Table<MutationQueueEntry>;
 
   constructor() {
     super('webwaka-fintech');
     this.version(1).stores({
-      bankAccounts: 'id, tenantId, accountNumber, customerId, status',
-      transactions: 'id, tenantId, accountId, type, status, reference',
-      insurancePolicies: 'id, tenantId, customerId, policyType, status',
-      investmentPortfolios: 'id, tenantId, customerId, assetClass, status',
+      fint_bankAccounts: 'id, tenantId, accountNumber, customerId, status',
+      fint_transactions: 'id, tenantId, accountId, type, status, reference',
+      fint_insurancePolicies: 'id, tenantId, customerId, policyType, status',
+      fint_investmentPortfolios: 'id, tenantId, customerId, assetClass, status',
       mutationQueue: '++id, tenantId, createdAt',
     });
   }

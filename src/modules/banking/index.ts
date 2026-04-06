@@ -11,8 +11,8 @@
  *   POST   /api/banking/accounts             — Create account
  *   GET    /api/banking/accounts/:id         — Get account details
  *   PUT    /api/banking/accounts/:id/status  — Freeze/unfreeze/close account (admin)
- *   POST   /api/banking/transactions         — Record deposit/withdrawal
- *   GET    /api/banking/transactions         — List transactions for account
+ *   POST   /api/banking/fint_transactions         — Record deposit/withdrawal
+ *   GET    /api/banking/fint_transactions         — List fint_transactions for account
  */
 
 import { Hono } from 'hono';
@@ -29,8 +29,8 @@ bankingRouter.get('/accounts', requireRole(['admin', 'teller', 'customer']), asy
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM bankAccounts WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
-    : 'SELECT * FROM bankAccounts WHERE tenantId = ? ORDER BY createdAt DESC';
+    ? 'SELECT * FROM fint_bankAccounts WHERE tenantId = ? AND customerId = ? ORDER BY createdAt DESC'
+    : 'SELECT * FROM fint_bankAccounts WHERE tenantId = ? ORDER BY createdAt DESC';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -56,7 +56,7 @@ bankingRouter.post('/accounts', requireRole(['admin', 'teller']), async (c) => {
   const accountNumber = Math.floor(1000000000 + Math.random() * 9000000000).toString();
 
   await c.env.DB.prepare(
-    'INSERT INTO bankAccounts (id, tenantId, accountNumber, customerId, accountType, balanceKobo, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO fint_bankAccounts (id, tenantId, accountNumber, customerId, accountType, balanceKobo, status, createdAt, updatedAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
     .bind(id, tenantId, accountNumber, body.customerId, body.accountType, 0, 'active', createdAt, createdAt)
     .run();
@@ -69,7 +69,7 @@ bankingRouter.get('/accounts/:id', requireRole(['admin', 'teller', 'customer']),
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM bankAccounts WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_bankAccounts WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Account not found' }, 404);
   if (user.role === 'customer' && row.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
@@ -89,7 +89,7 @@ bankingRouter.put('/accounts/:id/status', requireRole(['admin']), async (c) => {
 
   const now = new Date().toISOString();
   const result = await c.env.DB.prepare(
-    'UPDATE bankAccounts SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    'UPDATE fint_bankAccounts SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
   )
     .bind(body.status, now, id, tenantId)
     .run();
@@ -98,7 +98,7 @@ bankingRouter.put('/accounts/:id/status', requireRole(['admin']), async (c) => {
   return c.json({ success: true, status: body.status });
 });
 
-bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) => {
+bankingRouter.post('/fint_transactions', requireRole(['admin', 'teller']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const body = await c.req.json<{
@@ -117,7 +117,7 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT * FROM bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
+    'SELECT * FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND status = ?'
   )
     .bind(body.accountId, tenantId, 'active')
     .first() as Record<string, unknown> | null;
@@ -141,7 +141,7 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
   const createdAt = new Date().toISOString();
   const reference = `TRX-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-  const fraudAlerts = await runFraudRules(c.env.DB, tenantId, {
+  const fint_fraudAlerts = await runFraudRules(c.env.DB, tenantId, {
     accountId: body.accountId,
     customerId: account.customerId as string,
     amountKobo: body.amountKobo,
@@ -150,22 +150,22 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
   });
 
   await c.env.DB.prepare(
-    'INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    'INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
   )
     .bind(id, tenantId, body.accountId, body.type, body.amountKobo, reference, 'success', body.description ?? '', createdAt)
     .run();
 
   const balanceModifier = ['deposit', 'interest'].includes(body.type) ? body.amountKobo : -body.amountKobo;
   await c.env.DB.prepare(
-    'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
   )
     .bind(balanceModifier, createdAt, body.accountId, tenantId)
     .run();
 
-  if (fraudAlerts.length > 0) {
-    for (const alert of fraudAlerts) {
+  if (fint_fraudAlerts.length > 0) {
+    for (const alert of fint_fraudAlerts) {
       await c.env.DB.prepare(
-        `INSERT INTO fraudAlerts (id, tenantId, customerId, accountId, transactionId, ruleTriggered, severity, status, details, createdAt)
+        `INSERT INTO fint_fraudAlerts (id, tenantId, customerId, accountId, transactionId, ruleTriggered, severity, status, details, createdAt)
          VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?)`
       )
         .bind(crypto.randomUUID(), tenantId, account.customerId as string, body.accountId, id, alert.rule, alert.severity, JSON.stringify(alert.details), createdAt)
@@ -173,7 +173,7 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
     }
   }
 
-  // ─── FT-005: Event emission for all banking transactions ────────────────────
+  // ─── FT-005: Event emission for all banking fint_transactions ────────────────────
   const eventType = body.type === 'deposit' || body.type === 'interest'
     ? 'banking.deposit'
     : body.type === 'withdrawal'
@@ -196,25 +196,25 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
     success: true,
     id,
     reference,
-    fraudAlertsTriggered: fraudAlerts.length,
-    ...(fraudAlerts.length > 0 ? { fraudAlerts: fraudAlerts.map((a) => ({ rule: a.rule, severity: a.severity })) } : {}),
+    fraudAlertsTriggered: fint_fraudAlerts.length,
+    ...(fint_fraudAlerts.length > 0 ? { fint_fraudAlerts: fint_fraudAlerts.map((a) => ({ rule: a.rule, severity: a.severity })) } : {}),
   }, 201);
 });
 
-bankingRouter.get('/transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
+bankingRouter.get('/fint_transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const accountId = c.req.query('accountId');
 
   if (!accountId) return c.json({ error: 'accountId query parameter is required' }, 400);
 
-  const account = await c.env.DB.prepare('SELECT customerId FROM bankAccounts WHERE id = ? AND tenantId = ?')
+  const account = await c.env.DB.prepare('SELECT customerId FROM fint_bankAccounts WHERE id = ? AND tenantId = ?')
     .bind(accountId, tenantId).first() as Record<string, unknown> | null;
   if (!account) return c.json({ error: 'Account not found' }, 404);
   if (user.role === 'customer' && account.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM transactions WHERE tenantId = ? AND accountId = ? ORDER BY createdAt DESC LIMIT 100'
+    'SELECT * FROM fint_transactions WHERE tenantId = ? AND accountId = ? ORDER BY createdAt DESC LIMIT 100'
   )
     .bind(tenantId, accountId)
     .all();

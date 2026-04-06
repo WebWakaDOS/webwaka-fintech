@@ -7,9 +7,9 @@
  * Agents earn a configurable fee per transaction.
  *
  * Endpoints:
- *   POST   /api/agent/transactions           — Record a POS transaction
- *   GET    /api/agent/transactions           — List transactions (agent: own; admin: all)
- *   GET    /api/agent/transactions/:id       — Get single transaction
+ *   POST   /api/agent/fint_transactions           — Record a POS transaction
+ *   GET    /api/agent/fint_transactions           — List fint_transactions (agent: own; admin: all)
+ *   GET    /api/agent/fint_transactions/:id       — Get single transaction
  *   GET    /api/agent/summary                — Agent commission summary
  */
 
@@ -26,7 +26,7 @@ const AGENT_FEES: Record<AgentTxType, number> = {
   transfer: 5000,     // ₦50
 };
 
-agentRouter.post('/transactions', requireRole(['admin', 'agent', 'teller']), async (c) => {
+agentRouter.post('/fint_transactions', requireRole(['admin', 'agent', 'teller']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const body = await c.req.json<{
@@ -50,7 +50,7 @@ agentRouter.post('/transactions', requireRole(['admin', 'agent', 'teller']), asy
   }
 
   const account = await c.env.DB.prepare(
-    'SELECT balanceKobo FROM bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
+    'SELECT balanceKobo FROM fint_bankAccounts WHERE id = ? AND tenantId = ? AND customerId = ? AND status = ?'
   )
     .bind(accountId, tenantId, customerId, 'active')
     .first() as Record<string, number> | null;
@@ -71,14 +71,14 @@ agentRouter.post('/transactions', requireRole(['admin', 'agent', 'teller']), asy
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      `INSERT INTO agentTransactions (id, tenantId, agentId, customerId, accountId, type, amountKobo, feeKobo, reference, posTerminalId, status, createdAt)
+      `INSERT INTO fint_agentTransactions (id, tenantId, agentId, customerId, accountId, type, amountKobo, feeKobo, reference, posTerminalId, status, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'success', ?)`
     ).bind(id, tenantId, agentId, customerId, accountId, type, amountKobo, feeKobo, reference, body.posTerminalId ?? null, now),
     c.env.DB.prepare(
-      'UPDATE bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_bankAccounts SET balanceKobo = balanceKobo + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(balanceModifier, now, accountId, tenantId),
     c.env.DB.prepare(
-      `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
+      `INSERT INTO fint_transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, ?, ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, accountId, txType, amountKobo, reference, `Agent ${type} via POS ${body.posTerminalId ?? 'N/A'}`, now),
   ]);
@@ -86,25 +86,25 @@ agentRouter.post('/transactions', requireRole(['admin', 'agent', 'teller']), asy
   return c.json({ success: true, id, reference, feeKobo, amountKobo, type, status: 'success' }, 201);
 });
 
-agentRouter.get('/transactions', requireRole(['admin', 'agent', 'teller']), async (c) => {
+agentRouter.get('/fint_transactions', requireRole(['admin', 'agent', 'teller']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
 
   const query = user.role === 'agent'
-    ? 'SELECT * FROM agentTransactions WHERE tenantId = ? AND agentId = ? ORDER BY createdAt DESC LIMIT 200'
-    : 'SELECT * FROM agentTransactions WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 500';
+    ? 'SELECT * FROM fint_agentTransactions WHERE tenantId = ? AND agentId = ? ORDER BY createdAt DESC LIMIT 200'
+    : 'SELECT * FROM fint_agentTransactions WHERE tenantId = ? ORDER BY createdAt DESC LIMIT 500';
   const params = user.role === 'agent' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
   return c.json({ data: results });
 });
 
-agentRouter.get('/transactions/:id', requireRole(['admin', 'agent', 'teller']), async (c) => {
+agentRouter.get('/fint_transactions/:id', requireRole(['admin', 'agent', 'teller']), async (c) => {
   const user = c.get('user');
   const tenantId = user.tenantId;
   const id = c.req.param('id');
 
-  const row = await c.env.DB.prepare('SELECT * FROM agentTransactions WHERE id = ? AND tenantId = ?')
+  const row = await c.env.DB.prepare('SELECT * FROM fint_agentTransactions WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!row) return c.json({ error: 'Transaction not found' }, 404);
   if (user.role === 'agent' && row.agentId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
@@ -118,7 +118,7 @@ agentRouter.get('/summary', requireRole(['admin', 'agent']), async (c) => {
 
   const { results } = await c.env.DB.prepare(
     `SELECT type, COUNT(*) as count, SUM(amountKobo) as totalAmountKobo, SUM(feeKobo) as totalFeesKobo
-     FROM agentTransactions WHERE tenantId = ? AND agentId = ? AND status = 'success'
+     FROM fint_agentTransactions WHERE tenantId = ? AND agentId = ? AND status = 'success'
      GROUP BY type`
   )
     .bind(tenantId, agentId)

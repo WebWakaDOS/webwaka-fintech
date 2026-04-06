@@ -73,7 +73,7 @@ export interface TransferStatusResponse {
   settledAt?: string;
 }
 
-/** NIBSS NIP response codes for accepted transactions */
+/** NIBSS NIP response codes for accepted fint_transactions */
 const NIBSS_ACCEPTED_CODES = new Set(['00', '000']);
 
 /**

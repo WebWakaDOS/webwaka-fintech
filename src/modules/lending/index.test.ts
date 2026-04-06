@@ -8,7 +8,7 @@
  *
  * RBAC:
  *   - customer cannot access another customer's credit score (403)
- *   - customer cannot approve or reject loans
+ *   - customer cannot approve or reject fint_loans
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
@@ -236,7 +236,7 @@ describe('Rule-based credit scoring — score boundaries', () => {
     expect(body.score).toBeGreaterThanOrEqual(600);
   });
 
-  it('assigns lower score when majority of transactions are failed', async () => {
+  it('assigns lower score when majority of fint_transactions are failed', async () => {
     const txRows = Array.from({ length: 20 }, (_, i) => ({
       createdAt: new Date(Date.now() - i * 60 * 60 * 1000).toISOString(),
       type: 'withdrawal',
@@ -256,16 +256,16 @@ describe('Rule-based credit scoring — score boundaries', () => {
 
 // ─── Loan Origination ─────────────────────────────────────────────────────────
 
-describe('POST /loans — Loan Origination', () => {
+describe('POST /fint_loans — Loan Origination', () => {
   it('returns 400 when required fields are missing', async () => {
     const env = mockEnv();
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans', { customerId: 'c1' }), env);
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans', { customerId: 'c1' }), env);
     expect(res.status).toBe(400);
   });
 
   it('returns 400 when principalKobo is not a positive integer', async () => {
     const env = mockEnv();
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans', {
       customerId: 'c1', accountId: 'acc-1', principalKobo: 100.5, interestRateBps: 500, termDays: 30,
     }), env);
     expect(res.status).toBe(400);
@@ -275,7 +275,7 @@ describe('POST /loans — Loan Origination', () => {
     const dbStmt = makePreparedStmt(null);
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans', {
       customerId: 'c1', accountId: 'acc-missing', principalKobo: 1000000, interestRateBps: 500, termDays: 30,
     }), env);
     expect(res.status).toBe(404);
@@ -295,7 +295,7 @@ describe('POST /loans — Loan Origination', () => {
     };
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans', {
       customerId: 'cust-1', accountId: 'acc-1', principalKobo: 1000000, interestRateBps: 500, termDays: 30,
     }), env);
     expect(res.status).toBe(201);
@@ -306,12 +306,12 @@ describe('POST /loans — Loan Origination', () => {
   });
 });
 
-describe('GET /loans/:id', () => {
+describe('GET /fint_loans/:id', () => {
   it('returns 404 when loan not found', async () => {
     const dbStmt = makePreparedStmt(null);
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
-    const res = await lendingRouter.fetch(new Request('http://localhost/loans/no-such-loan'), env);
+    const res = await lendingRouter.fetch(new Request('http://localhost/fint_loans/no-such-loan'), env);
     expect(res.status).toBe(404);
   });
 
@@ -320,21 +320,21 @@ describe('GET /loans/:id', () => {
     const dbStmt = makePreparedStmt(record);
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
-    const res = await lendingRouter.fetch(new Request('http://localhost/loans/loan-1'), env);
+    const res = await lendingRouter.fetch(new Request('http://localhost/fint_loans/loan-1'), env);
     expect(res.status).toBe(200);
     const body = await res.json() as { data: typeof record };
     expect(body.data.principalKobo).toBe(500000);
   });
 });
 
-describe('PUT /loans/:id/approve', () => {
+describe('PUT /fint_loans/:id/approve', () => {
   it('approves a pending loan', async () => {
     const dbStmt = makePreparedStmt(null, []);
     dbStmt.run = vi.fn().mockResolvedValue({ success: true, meta: { changes: 1 } });
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
     const res = await lendingRouter.fetch(
-      new Request('http://localhost/loans/loan-abc/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' } }),
+      new Request('http://localhost/fint_loans/loan-abc/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' } }),
       env
     );
     expect(res.status).toBe(200);
@@ -348,17 +348,17 @@ describe('PUT /loans/:id/approve', () => {
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
     const res = await lendingRouter.fetch(
-      new Request('http://localhost/loans/no-such-loan/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' } }),
+      new Request('http://localhost/fint_loans/no-such-loan/approve', { method: 'PUT', headers: { 'Content-Type': 'application/json' } }),
       env
     );
     expect(res.status).toBe(404);
   });
 });
 
-describe('POST /loans/:id/repay', () => {
+describe('POST /fint_loans/:id/repay', () => {
   it('returns 400 when amountKobo is not a positive integer', async () => {
     const env = mockEnv();
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans/loan-1/repay', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans/loan-1/repay', {
       amountKobo: -100, accountId: 'acc-1',
     }), env);
     expect(res.status).toBe(400);
@@ -378,7 +378,7 @@ describe('POST /loans/:id/repay', () => {
     };
     const env = mockEnv({ DB: { prepare: vi.fn().mockReturnValue(dbStmt) } });
 
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans/loan-1/repay', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans/loan-1/repay', {
       amountKobo: 500000, accountId: 'acc-1',
     }), env);
     expect(res.status).toBe(422);
@@ -405,7 +405,7 @@ describe('POST /loans/:id/repay', () => {
       },
     });
 
-    const res = await lendingRouter.fetch(makeRequest('POST', '/loans/loan-1/repay', {
+    const res = await lendingRouter.fetch(makeRequest('POST', '/fint_loans/loan-1/repay', {
       amountKobo: 500000, accountId: 'acc-1',
     }), env);
     expect(res.status).toBe(200);

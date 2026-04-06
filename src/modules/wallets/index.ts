@@ -44,7 +44,7 @@ walletsRouter.post('/', requireRole(['admin', 'teller', 'customer']), async (c) 
 
   try {
     await c.env.DB.prepare(
-      `INSERT INTO multiCurrencyWallets (id, tenantId, customerId, currency, balanceMinorUnits, status, createdAt, updatedAt)
+      `INSERT INTO fint_multiCurrencyWallets (id, tenantId, customerId, currency, balanceMinorUnits, status, createdAt, updatedAt)
        VALUES (?, ?, ?, ?, 0, 'active', ?, ?)`
     )
       .bind(id, tenantId, body.customerId, body.currency, now, now)
@@ -61,8 +61,8 @@ walletsRouter.get('/', requireRole(['admin', 'teller', 'customer']), async (c) =
   const tenantId = user.tenantId;
 
   const query = user.role === 'customer'
-    ? 'SELECT * FROM multiCurrencyWallets WHERE tenantId = ? AND customerId = ? ORDER BY currency'
-    : 'SELECT * FROM multiCurrencyWallets WHERE tenantId = ? ORDER BY customerId, currency LIMIT 500';
+    ? 'SELECT * FROM fint_multiCurrencyWallets WHERE tenantId = ? AND customerId = ? ORDER BY currency'
+    : 'SELECT * FROM fint_multiCurrencyWallets WHERE tenantId = ? ORDER BY customerId, currency LIMIT 500';
   const params = user.role === 'customer' ? [tenantId, user.userId] : [tenantId];
 
   const { results } = await c.env.DB.prepare(query).bind(...params).all();
@@ -79,7 +79,7 @@ walletsRouter.get('/:customerId', requireRole(['admin', 'teller', 'customer']), 
   }
 
   const { results } = await c.env.DB.prepare(
-    'SELECT * FROM multiCurrencyWallets WHERE tenantId = ? AND customerId = ? ORDER BY currency'
+    'SELECT * FROM fint_multiCurrencyWallets WHERE tenantId = ? AND customerId = ? ORDER BY currency'
   )
     .bind(tenantId, customerId)
     .all();
@@ -96,14 +96,14 @@ walletsRouter.post('/:id/fund', requireRole(['admin', 'teller']), async (c) => {
     return c.json({ error: 'amountMinorUnits must be a positive integer' }, 400);
   }
 
-  const wallet = await c.env.DB.prepare('SELECT * FROM multiCurrencyWallets WHERE id = ? AND tenantId = ?')
+  const wallet = await c.env.DB.prepare('SELECT * FROM fint_multiCurrencyWallets WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!wallet) return c.json({ error: 'Wallet not found' }, 404);
   if (wallet.status !== 'active') return c.json({ error: 'Wallet is not active' }, 400);
 
   const now = new Date().toISOString();
   await c.env.DB.prepare(
-    'UPDATE multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    'UPDATE fint_multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
   )
     .bind(body.amountMinorUnits, now, id, tenantId)
     .run();
@@ -136,7 +136,7 @@ walletsRouter.post('/:id/debit', requireRole(['admin', 'teller']), async (c) => 
     return c.json({ error: 'amountMinorUnits must be a positive integer' }, 400);
   }
 
-  const wallet = await c.env.DB.prepare('SELECT * FROM multiCurrencyWallets WHERE id = ? AND tenantId = ?')
+  const wallet = await c.env.DB.prepare('SELECT * FROM fint_multiCurrencyWallets WHERE id = ? AND tenantId = ?')
     .bind(id, tenantId).first() as Record<string, unknown> | null;
   if (!wallet) return c.json({ error: 'Wallet not found' }, 404);
   if (wallet.status !== 'active') return c.json({ error: 'Wallet is not active' }, 400);
@@ -146,7 +146,7 @@ walletsRouter.post('/:id/debit', requireRole(['admin', 'teller']), async (c) => 
 
   const now = new Date().toISOString();
   await c.env.DB.prepare(
-    'UPDATE multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+    'UPDATE fint_multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
   )
     .bind(body.amountMinorUnits, now, id, tenantId)
     .run();
@@ -191,10 +191,10 @@ walletsRouter.post('/convert', requireRole(['admin', 'teller', 'customer']), asy
   }
 
   const [fromWallet, toWallet] = await Promise.all([
-    c.env.DB.prepare('SELECT * FROM multiCurrencyWallets WHERE tenantId = ? AND customerId = ? AND currency = ?')
+    c.env.DB.prepare('SELECT * FROM fint_multiCurrencyWallets WHERE tenantId = ? AND customerId = ? AND currency = ?')
       .bind(tenantId, body.customerId, body.fromCurrency)
       .first() as Promise<Record<string, unknown> | null>,
-    c.env.DB.prepare('SELECT * FROM multiCurrencyWallets WHERE tenantId = ? AND customerId = ? AND currency = ?')
+    c.env.DB.prepare('SELECT * FROM fint_multiCurrencyWallets WHERE tenantId = ? AND customerId = ? AND currency = ?')
       .bind(tenantId, body.customerId, body.toCurrency)
       .first() as Promise<Record<string, unknown> | null>,
   ]);
@@ -210,10 +210,10 @@ walletsRouter.post('/convert', requireRole(['admin', 'teller', 'customer']), asy
 
   await c.env.DB.batch([
     c.env.DB.prepare(
-      'UPDATE multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits - ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(body.fromAmountMinorUnits, now, fromWallet.id as string, tenantId),
     c.env.DB.prepare(
-      'UPDATE multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
+      'UPDATE fint_multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(toAmount, now, toWallet.id as string, tenantId),
   ]);
 
@@ -248,7 +248,7 @@ async function updateWalletStatus(c: Context<{ Bindings: Bindings; Variables: Ap
   const now = new Date().toISOString();
 
   const result = await c.env.DB.prepare(
-    `UPDATE multiCurrencyWallets SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
+    `UPDATE fint_multiCurrencyWallets SET status = ?, updatedAt = ? WHERE id = ? AND tenantId = ? AND status = ?`
   ).bind(to, now, id, tenantId, from).run();
 
   if (!result.meta.changes) return c.json({ error: `Wallet not found or not in ${from} state` }, 404);

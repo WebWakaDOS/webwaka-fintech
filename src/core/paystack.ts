@@ -140,7 +140,7 @@ export async function verifyPaystackWebhook(
 }
 
 /**
- * Generate a unique Paystack payment reference for fintech transactions.
+ * Generate a unique Paystack payment reference for fintech fint_transactions.
  * Format: FIN-{tenantId}-{timestamp}-{random}
  */
 export function generatePaymentReference(tenantId: string): string {

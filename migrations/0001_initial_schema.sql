@@ -1,7 +1,7 @@
 -- WebWaka Fintech Suite — D1 Database Schema
 -- Invariant 5: Nigeria First — All amounts in kobo integers
 
-CREATE TABLE IF NOT EXISTS bankAccounts (
+CREATE TABLE IF NOT EXISTS fint_bankAccounts (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountNumber TEXT NOT NULL,
@@ -12,10 +12,10 @@ CREATE TABLE IF NOT EXISTS bankAccounts (
   createdAt TEXT NOT NULL,
   updatedAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_bankAccounts_tenantId ON bankAccounts(tenantId);
-CREATE UNIQUE INDEX IF NOT EXISTS idx_bankAccounts_accountNumber ON bankAccounts(accountNumber);
+CREATE INDEX IF NOT EXISTS idx_bankAccounts_tenantId ON fint_bankAccounts(tenantId);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_bankAccounts_accountNumber ON fint_bankAccounts(accountNumber);
 
-CREATE TABLE IF NOT EXISTS transactions (
+CREATE TABLE IF NOT EXISTS fint_transactions (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   accountId TEXT NOT NULL,
@@ -26,10 +26,10 @@ CREATE TABLE IF NOT EXISTS transactions (
   description TEXT,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_transactions_tenantId ON transactions(tenantId);
-CREATE INDEX IF NOT EXISTS idx_transactions_accountId ON transactions(accountId);
+CREATE INDEX IF NOT EXISTS idx_transactions_tenantId ON fint_transactions(tenantId);
+CREATE INDEX IF NOT EXISTS idx_transactions_accountId ON fint_transactions(accountId);
 
-CREATE TABLE IF NOT EXISTS insurancePolicies (
+CREATE TABLE IF NOT EXISTS fint_insurancePolicies (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -41,9 +41,9 @@ CREATE TABLE IF NOT EXISTS insurancePolicies (
   endDate TEXT NOT NULL,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_insurancePolicies_tenantId ON insurancePolicies(tenantId);
+CREATE INDEX IF NOT EXISTS idx_insurancePolicies_tenantId ON fint_insurancePolicies(tenantId);
 
-CREATE TABLE IF NOT EXISTS investmentPortfolios (
+CREATE TABLE IF NOT EXISTS fint_investmentPortfolios (
   id TEXT PRIMARY KEY,
   tenantId TEXT NOT NULL,
   customerId TEXT NOT NULL,
@@ -53,4 +53,4 @@ CREATE TABLE IF NOT EXISTS investmentPortfolios (
   status TEXT NOT NULL,
   createdAt TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_investmentPortfolios_tenantId ON investmentPortfolios(tenantId);
+CREATE INDEX IF NOT EXISTS idx_investmentPortfolios_tenantId ON fint_investmentPortfolios(tenantId);

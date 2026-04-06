@@ -3,7 +3,7 @@
  *
  * Mono is a leading Nigerian Open Banking API provider enabling users to link
  * external bank accounts and retrieve financial data (accounts, balances,
- * transactions) as well as initiate payments via Direct Pay.
+ * fint_transactions) as well as initiate payments via Direct Pay.
  *
  * Invariant 5: Nigeria First — Mono supports all Nigerian commercial banks.
  * Invariant 1: Build Once Use Infinitely — all Mono calls route through here.
@@ -51,7 +51,7 @@ export interface MonoTransaction {
 
 export interface MonoTransactionsResponse {
   total: number;
-  transactions: MonoTransaction[];
+  fint_transactions: MonoTransaction[];
 }
 
 export interface MonoDirectPayResponse {
@@ -143,7 +143,7 @@ export async function getAccountBalance(
 }
 
 /**
- * Retrieve recent transactions for a linked account.
+ * Retrieve recent fint_transactions for a linked account.
  */
 export async function getTransactions(
   config: MonoConfig,
@@ -156,7 +156,7 @@ export async function getTransactions(
   if (options.narration) params.set('narration', options.narration);
   if (options.limit) params.set('paginate', 'false');
 
-  const path = `/accounts/${accountId}/transactions${params.toString() ? `?${params}` : ''}`;
+  const path = `/accounts/${accountId}/fint_transactions${params.toString() ? `?${params}` : ''}`;
   return monoRequest<MonoTransactionsResponse>(config, 'GET', path);
 }
 
