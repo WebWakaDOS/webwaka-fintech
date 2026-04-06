@@ -48,9 +48,7 @@ NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
 # IMPORTANT: webwaka-fintech requires its OWN dedicated D1 database.
 # Do NOT share the institutional DB (ee93377c) — fintech has separate table schemas
 # for banking, wallets, KYC, lending, crypto, insurance, etc.
-# Create a fintech staging DB:
-#   wrangler d1 create webwaka-fintech-db-staging
-# Then replace the REPLACE_WITH_... placeholder with the real ID.
+# Run bootstrap-d1 workflow once to create + populate this ID automatically.
 [env.staging]
 name = "webwaka-fintech-staging"
 
@@ -73,11 +71,18 @@ bucket_name = "webwaka-fintech-docs-staging"
 
 [env.staging.vars]
 ENVIRONMENT = "staging"
+# NIBSS placeholders for staging — override via wrangler secrets for real values
+NIBSS_BASE_URL = "https://placeholder.nibss.staging"
+NIBSS_CLIENT_ID = "placeholder"
+NIBSS_CLIENT_SECRET = "placeholder"
+NIBSS_SOURCE_BANK_CODE = "000001"
+NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
 
 # ─── Production Environment ───────────────────────────────────────────────────
 # IMPORTANT: Create a dedicated fintech production D1 DB:
 #   wrangler d1 create webwaka-fintech-db-prod
-# Then replace the REPLACE_WITH_... placeholder with the real ID.
+# Then replace the REPLACE_WITH_... placeholder with the real ID,
+# OR run the bootstrap-d1 workflow which does this automatically.
 [env.production]
 name = "webwaka-fintech-production"
 
@@ -100,6 +105,12 @@ bucket_name = "webwaka-fintech-docs-prod"
 
 [env.production.vars]
 ENVIRONMENT = "production"
+# NIBSS placeholders for production — override via wrangler secrets for real values
+NIBSS_BASE_URL = "https://placeholder.nibss.prod"
+NIBSS_CLIENT_ID = "placeholder"
+NIBSS_CLIENT_SECRET = "placeholder"
+NIBSS_SOURCE_BANK_CODE = "000001"
+NIBSS_SOURCE_ACCOUNT_NUMBER = "0000000000"
 
 # ─── Secrets (set via: wrangler secret put <KEY> --env <staging|production>) ──
 # JWT_SECRET

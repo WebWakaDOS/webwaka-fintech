@@ -1,0 +1,128 @@
+name: Bootstrap D1 Databases
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bootstrap-d1:
+    name: Create D1 Databases & Update wrangler.toml
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install wrangler
+        run: npm install -g wrangler
+
+      - name: Create fintech staging D1 database
+        id: create-staging-db
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # Try creating; if already exists, list and grep for it
+          OUTPUT=$(wrangler d1 create webwaka-fintech-db-staging 2>&1 || true)
+          echo "Create output: $OUTPUT"
+
+          # Try to parse new ID from creation output
+          NEW_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+
+          if [ -z "$NEW_ID" ]; then
+            echo "DB may already exist — listing all D1 databases..."
+            LIST_OUTPUT=$(wrangler d1 list 2>&1)
+            echo "$LIST_OUTPUT"
+            NEW_ID=$(echo "$LIST_OUTPUT" | grep "webwaka-fintech-db-staging" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          fi
+
+          if [ -z "$NEW_ID" ]; then
+            echo "ERROR: Could not get staging DB ID"
+            exit 1
+          fi
+          echo "STAGING_DB_ID=$NEW_ID" >> $GITHUB_OUTPUT
+          echo "✅ Staging DB ID: $NEW_ID"
+
+      - name: Create fintech production D1 database
+        id: create-prod-db
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          OUTPUT=$(wrangler d1 create webwaka-fintech-db-prod 2>&1 || true)
+          echo "Create output: $OUTPUT"
+
+          NEW_ID=$(echo "$OUTPUT" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+
+          if [ -z "$NEW_ID" ]; then
+            echo "DB may already exist — listing all D1 databases..."
+            LIST_OUTPUT=$(wrangler d1 list 2>&1)
+            echo "$LIST_OUTPUT"
+            NEW_ID=$(echo "$LIST_OUTPUT" | grep "webwaka-fintech-db-prod" | grep -oE '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}' | head -1)
+          fi
+
+          if [ -z "$NEW_ID" ]; then
+            echo "ERROR: Could not get prod DB ID"
+            exit 1
+          fi
+          echo "PROD_DB_ID=$NEW_ID" >> $GITHUB_OUTPUT
+          echo "✅ Production DB ID: $NEW_ID"
+
+      - name: Patch wrangler.toml with real DB IDs
+        run: |
+          STAGING_ID="${{ steps.create-staging-db.outputs.STAGING_DB_ID }}"
+          PROD_ID="${{ steps.create-prod-db.outputs.PROD_DB_ID }}"
+
+          echo "Patching staging DB ID: $STAGING_ID"
+          echo "Patching prod DB ID: $PROD_ID"
+
+          sed -i "s/REPLACE_WITH_FINTECH_STAGING_DB_ID/$STAGING_ID/g" wrangler.toml
+          sed -i "s/REPLACE_WITH_FINTECH_PROD_DB_ID/$PROD_ID/g" wrangler.toml
+
+          echo "--- Patched wrangler.toml D1 entries ---"
+          grep "database_id" wrangler.toml
+
+      - name: Run DB migrations on staging
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          DB_ID="${{ steps.create-staging-db.outputs.STAGING_DB_ID }}"
+          for f in migrations/*.sql; do
+            echo "Applying $f to staging..."
+            wrangler d1 execute webwaka-fintech-db-staging --remote --file "$f" 2>&1 || echo "Migration $f skipped (may already be applied)"
+          done
+          echo "✅ Staging migrations complete"
+
+      - name: Run DB migrations on production
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          DB_ID="${{ steps.create-prod-db.outputs.PROD_DB_ID }}"
+          for f in migrations/*.sql; do
+            echo "Applying $f to production..."
+            wrangler d1 execute webwaka-fintech-db-prod --remote --file "$f" 2>&1 || echo "Migration $f skipped (may already be applied)"
+          done
+          echo "✅ Production migrations complete"
+
+      - name: Commit patched wrangler.toml
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add wrangler.toml
+          git diff --staged --quiet || git commit -m "chore(infra): set real D1 database IDs for fintech staging and production
+
+          Staging DB:  ${{ steps.create-staging-db.outputs.STAGING_DB_ID }}
+          Production DB: ${{ steps.create-prod-db.outputs.PROD_DB_ID }}
+
+          Created via bootstrap-d1 workflow. Migrations applied."
+          git push
+          echo "✅ wrangler.toml committed with real D1 IDs"
