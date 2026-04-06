@@ -2,26 +2,28 @@
  * Lending Module — AI Credit Scoring (#2) + Loan Origination (#18) + Debt Collection (#19)
  *
  * Endpoints:
- *   POST   /api/lending/credit-scores           — Compute AI credit score for a customer
- *   GET    /api/lending/credit-scores/:customerId — Get latest credit score
+ *   POST   /api/lending/credit-scores              — Compute AI credit score for a customer
+ *   GET    /api/lending/credit-scores/:customerId  — Get latest credit score
  *
- *   POST   /api/lending/loans                   — Apply for a loan
- *   GET    /api/lending/loans                   — List loans (admin: all; customer: own)
- *   GET    /api/lending/loans/:id               — Get single loan
- *   PUT    /api/lending/loans/:id/approve       — Approve loan (admin)
- *   PUT    /api/lending/loans/:id/disburse      — Disburse approved loan (admin)
- *   POST   /api/lending/loans/:id/repay         — Record a repayment
- *   PUT    /api/lending/loans/:id/reject        — Reject loan application (admin)
+ *   POST   /api/lending/loans                      — Apply for a loan
+ *   GET    /api/lending/loans                      — List loans (admin: all; customer: own)
+ *   GET    /api/lending/loans/:id                  — Get single loan
+ *   PUT    /api/lending/loans/:id/approve          — Approve loan (admin)
+ *   PUT    /api/lending/loans/:id/disburse         — Disburse approved loan (admin) — auto-generates schedule
+ *   GET    /api/lending/loans/:id/schedule         — Get amortization repayment schedule (FT-002)
+ *   POST   /api/lending/loans/:id/repay            — Record a repayment
+ *   PUT    /api/lending/loans/:id/reject           — Reject loan application (admin)
  *
- *   POST   /api/lending/debt-collection/:loanId/remind   — Trigger SMS/email reminder
- *   POST   /api/lending/debt-collection/:loanId/auto-debit — Attempt auto-debit
- *   GET    /api/lending/debt-collection/:loanId           — List collection events
+ *   POST   /api/lending/debt-collection/:loanId/remind      — Trigger SMS/email reminder
+ *   POST   /api/lending/debt-collection/:loanId/auto-debit  — Attempt auto-debit
+ *   GET    /api/lending/debt-collection/:loanId             — List collection events
  */
 
 import { Hono } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, CreditGrade, LoanStatus } from '../../core/types';
 import { getAICompletion } from '../../core/ai-platform-client';
+import { publishEvent } from '../../core/events';
 
 export const lendingRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -284,6 +286,24 @@ lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
   const dueAt = new Date(Date.now() + Number(loan.termDays) * 24 * 60 * 60 * 1000).toISOString();
   const reference = `LOAN-DISB-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+  // FT-002: Generate amortization schedule at disbursement time
+  const schedule = generateAmortizationSchedule({
+    loanId: id,
+    tenantId,
+    principalKobo: Number(loan.principalKobo),
+    interestRateBps: Number(loan.interestRateBps),
+    termDays: Number(loan.termDays),
+    disbursedAt: now,
+  });
+
+  const scheduleInserts = schedule.map((s) =>
+    c.env.DB.prepare(
+      `INSERT INTO loanRepaymentSchedules
+         (id, tenantId, loanId, installmentNumber, dueDate, principalKobo, interestKobo, totalDueKobo, status, createdAt)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'scheduled', ?)`
+    ).bind(s.id, tenantId, id, s.installmentNumber, s.dueDate, s.principalKobo, s.interestKobo, s.totalDueKobo, now)
+  );
+
   await c.env.DB.batch([
     c.env.DB.prepare(
       `UPDATE loans SET status = 'disbursed', disbursedAt = ?, dueAt = ?, updatedAt = ? WHERE id = ?`
@@ -295,9 +315,64 @@ lendingRouter.put('/loans/:id/disburse', requireRole(['admin']), async (c) => {
       `INSERT INTO transactions (id, tenantId, accountId, type, amountKobo, reference, status, description, createdAt)
        VALUES (?, ?, ?, 'deposit', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, loan.accountId, loan.principalKobo, reference, `Loan disbursement — ${id}`, now),
+    ...scheduleInserts,
   ]);
 
-  return c.json({ success: true, status: 'disbursed', dueAt, principalKobo: loan.principalKobo });
+  // FT-005: Emit lending.disbursed event
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'lending.disbursed',
+    loanId: id,
+    tenantId,
+    customerId: loan.customerId as string,
+    accountId: loan.accountId as string,
+    principalKobo: Number(loan.principalKobo),
+    interestRateBps: Number(loan.interestRateBps),
+    termDays: Number(loan.termDays),
+    totalRepayableKobo: Number(loan.totalRepayableKobo),
+    disbursedAt: now,
+    dueAt,
+  });
+
+  return c.json({ success: true, status: 'disbursed', dueAt, principalKobo: loan.principalKobo, installments: schedule.length });
+});
+
+// ─── FT-002: GET /api/lending/loans/:id/schedule — Amortization schedule ─────
+
+lendingRouter.get('/loans/:id/schedule', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const id = c.req.param('id');
+
+  const loan = await c.env.DB.prepare('SELECT * FROM loans WHERE id = ? AND tenantId = ?')
+    .bind(id, tenantId)
+    .first() as Record<string, unknown> | null;
+
+  if (!loan) return c.json({ error: 'Loan not found' }, 404);
+  if (user.role === 'customer' && loan.customerId !== user.userId) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? ORDER BY installmentNumber ASC`
+  )
+    .bind(tenantId, id)
+    .all();
+
+  const rows = results as Record<string, unknown>[];
+  const totalDueKobo = rows.reduce((s, r) => s + (r.totalDueKobo as number), 0);
+  const paidKobo = rows
+    .filter((r) => r.status === 'paid')
+    .reduce((s, r) => s + (r.totalDueKobo as number), 0);
+
+  return c.json({
+    data: results,
+    summary: {
+      totalInstallments: results.length,
+      totalDueKobo,
+      paidKobo,
+      remainingKobo: totalDueKobo - paidKobo,
+    },
+  });
 });
 
 lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer']), async (c) => {
@@ -355,6 +430,32 @@ lendingRouter.post('/loans/:id/repay', requireRole(['admin', 'teller', 'customer
        VALUES (?, ?, ?, 'fee', ?, ?, 'success', ?, ?)`
     ).bind(crypto.randomUUID(), tenantId, body.accountId, body.amountKobo, reference, `Loan repayment — ${id}`, now),
   ]);
+
+  // FT-002: Mark the earliest unpaid schedule entry as paid
+  const scheduleEntry = await c.env.DB.prepare(
+    `SELECT id FROM loanRepaymentSchedules WHERE tenantId = ? AND loanId = ? AND status = 'scheduled' ORDER BY installmentNumber ASC LIMIT 1`
+  ).bind(tenantId, id).first() as Record<string, unknown> | null;
+
+  if (scheduleEntry) {
+    await c.env.DB.prepare(
+      `UPDATE loanRepaymentSchedules SET status = 'paid', paidAt = ? WHERE id = ?`
+    ).bind(now, scheduleEntry.id as string).run();
+  }
+
+  // FT-005: Emit lending.repayment event
+  const repaymentId = crypto.randomUUID();
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'lending.repayment',
+    repaymentId,
+    loanId: id,
+    tenantId,
+    customerId: loan.customerId as string,
+    amountKobo: body.amountKobo,
+    reference,
+    newStatus,
+    remainingKobo: Math.max(0, remaining),
+    paidAt: now,
+  });
 
   return c.json({ success: true, reference, amountPaid: body.amountKobo, remaining: Math.max(0, remaining), status: newStatus });
 });
@@ -482,6 +583,111 @@ lendingRouter.get('/debt-collection/:loanId', requireRole(['admin']), async (c) 
 
   return c.json({ data: results });
 });
+
+// ─── FT-002: Amortization schedule generator ─────────────────────────────────
+
+interface ScheduleEntry {
+  id: string;
+  installmentNumber: number;
+  dueDate: string;
+  principalKobo: number;
+  interestKobo: number;
+  totalDueKobo: number;
+  loanId: string;
+  tenantId: string;
+}
+
+/**
+ * Generate a reducing-balance (EMI) amortization schedule.
+ *
+ * Algorithm:
+ *   - Converts bps annual rate to monthly rate
+ *   - Computes Equal Monthly Instalment (EMI) using standard formula
+ *   - Derives principal and interest components for each installment
+ *   - Remainder is absorbed in the final installment to avoid kobo drift
+ *
+ * @param loanId         Loan UUID
+ * @param tenantId       Tenant UUID
+ * @param principalKobo  Loan principal in kobo
+ * @param interestRateBps Annual interest rate in basis points (100 bps = 1%)
+ * @param termDays       Loan term in days
+ * @param disbursedAt    ISO timestamp of disbursement
+ */
+function generateAmortizationSchedule(opts: {
+  loanId: string;
+  tenantId: string;
+  principalKobo: number;
+  interestRateBps: number;
+  termDays: number;
+  disbursedAt: string;
+}): ScheduleEntry[] {
+  const { loanId, tenantId, principalKobo, interestRateBps, termDays, disbursedAt } = opts;
+  const numInstallments = Math.max(1, Math.ceil(termDays / 30));
+  const monthlyRate = interestRateBps / 10000 / 12;
+
+  const disbursedDate = new Date(disbursedAt);
+  const entries: ScheduleEntry[] = [];
+
+  if (monthlyRate === 0) {
+    // Zero-interest loan: split principal evenly
+    const baseInstallment = Math.floor(principalKobo / numInstallments);
+    let remainder = principalKobo - baseInstallment * numInstallments;
+
+    for (let i = 1; i <= numInstallments; i++) {
+      const dueDate = new Date(disbursedDate);
+      dueDate.setMonth(dueDate.getMonth() + i);
+      const principalDue = baseInstallment + (i === numInstallments ? remainder : 0);
+      entries.push({
+        id: crypto.randomUUID(),
+        loanId,
+        tenantId,
+        installmentNumber: i,
+        dueDate: dueDate.toISOString().slice(0, 10),
+        principalKobo: principalDue,
+        interestKobo: 0,
+        totalDueKobo: principalDue,
+      });
+      remainder = 0;
+    }
+    return entries;
+  }
+
+  // Standard reducing-balance EMI formula
+  const r = monthlyRate;
+  const rPow = Math.pow(1 + r, numInstallments);
+  const emi = Math.round(principalKobo * r * rPow / (rPow - 1));
+
+  let remainingPrincipal = principalKobo;
+
+  for (let i = 1; i <= numInstallments; i++) {
+    const dueDate = new Date(disbursedDate);
+    dueDate.setMonth(dueDate.getMonth() + i);
+
+    const interestKobo = Math.round(remainingPrincipal * r);
+    let principalDue = emi - interestKobo;
+
+    // Last installment: pay off any remaining balance to avoid drift
+    if (i === numInstallments) {
+      principalDue = remainingPrincipal;
+    }
+
+    const totalDue = principalDue + interestKobo;
+    remainingPrincipal -= principalDue;
+
+    entries.push({
+      id: crypto.randomUUID(),
+      loanId,
+      tenantId,
+      installmentNumber: i,
+      dueDate: dueDate.toISOString().slice(0, 10),
+      principalKobo: principalDue,
+      interestKobo,
+      totalDueKobo: totalDue,
+    });
+  }
+
+  return entries;
+}
 
 // ─── Rule-based credit scoring fallback ──────────────────────────────────────
 

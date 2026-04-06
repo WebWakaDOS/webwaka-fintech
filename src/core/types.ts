@@ -39,6 +39,14 @@ export interface Bindings {
   /** Crypto exchange partner (optional) */
   CRYPTO_EXCHANGE_URL?: string;
   CRYPTO_EXCHANGE_KEY?: string;
+  /** DOJAH secondary KYC/KYB provider (optional) */
+  DOJAH_APP_ID?: string;
+  DOJAH_PRIVATE_KEY?: string;
+  DOJAH_MODE?: string;
+  /** Mono open banking provider (optional) */
+  MONO_SECRET_KEY?: string;
+  /** Paystack webhook signature secret (optional — falls back to PAYSTACK_SECRET_KEY) */
+  PAYSTACK_WEBHOOK_SECRET?: string;
 }
 
 /**
@@ -136,6 +144,78 @@ export interface InitiatePayoutBody {
   narration: string;
   /** Optional: internal wallet account to debit before sending to NIBSS. Deduction is reversed on failure. */
   sourceAccountId?: string;
+  /** Optional idempotency key — prevents duplicate payouts for the same key within a tenant */
+  idempotencyKey?: string;
+}
+
+// ─── Loan Repayment Schedule (#FT-002) ───────────────────────────────────────
+
+export type ScheduleStatus = 'scheduled' | 'paid' | 'overdue' | 'waived';
+
+export interface LoanRepaymentScheduleEntry {
+  id: string;
+  tenantId: string;
+  loanId: string;
+  installmentNumber: number;
+  dueDate: string;
+  principalKobo: number;
+  interestKobo: number;
+  totalDueKobo: number;
+  status: ScheduleStatus;
+  paidAt?: string;
+  createdAt: string;
+}
+
+// ─── KYC Verification Audit (#FT-003) ────────────────────────────────────────
+
+export type KycVerificationType = 'bvn' | 'nin' | 'business_cac';
+export type KycVerificationProvider = 'dojah' | 'nibss' | 'manual';
+export type KycVerificationStatus = 'verified' | 'failed' | 'pending';
+
+export interface KycVerification {
+  id: string;
+  tenantId: string;
+  customerId: string;
+  verificationType: KycVerificationType;
+  provider: KycVerificationProvider;
+  referenceId?: string;
+  identifierType: string;
+  identifierValue: string;
+  status: KycVerificationStatus;
+  responseData?: string;
+  failureReason?: string;
+  createdAt: string;
+}
+
+// ─── Mono External Bank Accounts (#FT-009) ────────────────────────────────────
+
+export interface MonoConsent {
+  id: string;
+  tenantId: string;
+  customerId: string;
+  consentToken?: string;
+  monoAccountId?: string;
+  status: 'initiated' | 'linked' | 'failed' | 'revoked';
+  redirectUrl?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ExternalBankAccount {
+  id: string;
+  tenantId: string;
+  customerId: string;
+  monoConsentId: string;
+  monoAccountId: string;
+  bankName: string;
+  accountName: string;
+  accountNumber: string;
+  currency: string;
+  balanceMinorUnits?: number;
+  balanceFetchedAt?: string;
+  status: 'active' | 'revoked';
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface NibssWebhookPayload {

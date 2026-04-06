@@ -66,6 +66,17 @@ Port 8000 is a console-type output. The workflow is named **Start application**.
 
 Feature 1 (NIBSS NIP) is the existing payouts module.
 
+### New Enhancement Tasks (FT-001 — FT-009)
+
+| Task | Feature | Files |
+|------|---------|-------|
+| FT-001 | Payout idempotency key (`X-Idempotency-Key`) + `GET /api/payouts/reconcile` | `payouts/index.ts`, `migrations/0005_new_features.sql` |
+| FT-002 | Loan amortization schedule generation (`GET /api/lending/loans/:id/schedule`) | `lending/index.ts`, `migrations/0005_new_features.sql` |
+| FT-003 | Secondary KYC via DOJAH (`POST /api/kyc/verify`) | `kyc/index.ts`, `core/dojah.ts` |
+| FT-004 | Paystack payments + refunds + webhook (`/api/payments/*`, `/webhooks/paystack`) | `modules/payments/index.ts`, `core/paystack.ts` |
+| FT-005 | Full Event Bus expansion — all banking/lending/wallet/KYC events emitted | `core/events.ts`, banking/lending/wallets/kyc modules |
+| FT-009 | Mono open banking — consent/exchange/balance/transactions (`/api/open-banking/mono/*`) | `open-banking/index.ts`, `core/mono.ts` |
+
 ## Database
 
 Schema: `src/db/schema.sql`
@@ -107,6 +118,14 @@ Migrations:
 | interestAccruals | Interest (#17) |
 | overdraftEvents | Overdraft Protection (#6) |
 | ussdSessions | USSD Banking (#8) |
+| payoutIdempotencyKeys | NIBSS NIP Payouts (FT-001) |
+| loanRepaymentSchedules | Loan Origination (FT-002) |
+| kycVerifications | KYC Verification (FT-003) |
+| paystackEvents | Paystack Payments (FT-004) |
+| paystackRefunds | Paystack Payments (FT-004) |
+| paystackChargebacks | Paystack Payments (FT-004) |
+| monoConsents | Mono Open Banking (FT-009) |
+| externalBankAccounts | Mono Open Banking (FT-009) |
 
 ## Optional Environment Integrations
 
@@ -120,7 +139,10 @@ Configure in `wrangler.toml` [vars] for local dev or via `wrangler secret put` f
 | `CARD_ISSUER_KEY` + `CARD_ISSUER_URL` | Virtual Cards | Simulated card |
 | `CRYPTO_EXCHANGE_URL` + `CRYPTO_EXCHANGE_KEY` | Crypto ramps | Indicative rates |
 | `USSD_GATEWAY_URL` + `USSD_GATEWAY_SECRET` | USSD | Session-based only |
-| `EVENT_BUS_URL` + `EVENT_BUS_SECRET` | NIBSS events | Console log |
+| `EVENT_BUS_URL` + `EVENT_BUS_SECRET` | All financial events (FT-005) | Console log |
+| `DOJAH_APP_ID` + `DOJAH_PRIVATE_KEY` + `DOJAH_MODE` | Secondary KYC (FT-003) | Returns 503 |
+| `MONO_SECRET_KEY` | Mono open banking (FT-009) | Returns 503 |
+| `PAYSTACK_WEBHOOK_SECRET` | Paystack webhook HMAC verify (FT-004) | Signature skipped |
 
 ## KYC Tier Limits (CBN)
 

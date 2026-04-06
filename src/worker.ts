@@ -39,6 +39,7 @@ import { interestRouter } from './modules/interest/index';
 import { openBankingRouter } from './modules/open-banking/index';
 import { ussdRouter, ussdWebhookRouter } from './modules/ussd/index';
 import { overdraftRouter } from './modules/overdraft/index';
+import { paymentsRouter, paystackWebhookRouter } from './modules/payments/index';
 
 const app = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -59,6 +60,7 @@ app.get('/health', (c) => c.json({
     'bills', 'fraud', 'wallets', 'crypto', 'agent',
     'standing-orders', 'split-payments', 'interest',
     'open-banking', 'ussd', 'overdraft',
+    'payments', 'kyc-verify', 'loan-schedules', 'mono-open-banking',
   ],
 }));
 
@@ -70,6 +72,9 @@ app.route('/webhooks/nibss-nip', payoutsWebhookRouter);
 
 // USSD gateway callback (verified by USSD gateway IP allowlist in production)
 app.route('/webhooks/ussd', ussdWebhookRouter);
+
+// Paystack payment events (HMAC-SHA512 verified)
+app.route('/webhooks/paystack', paystackWebhookRouter);
 
 // ─── Core Module Routes ────────────────────────────────────────────────────────
 app.route('/api/banking', bankingRouter);
@@ -98,6 +103,7 @@ app.route('/api/standing-orders', standingOrdersRouter); // #14 Standing Orders 
 app.route('/api/split-payments', splitPaymentsRouter);   // #15 Split Payments
 app.route('/api/interest', interestRouter);              // #17 Interest-Bearing Accounts
 app.route('/api/open-banking', openBankingRouter);       // #20 Open Banking API
+app.route('/api/payments', paymentsRouter);              // FT-004 Paystack Payments + Refunds
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.notFound((c) => c.json({ error: 'Not found' }, 404));

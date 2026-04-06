@@ -20,6 +20,7 @@ import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables } from '../../core/types';
 import { checkKycLimit } from '../kyc/index';
 import { runFraudRules } from '../fraud/index';
+import { publishEvent } from '../../core/events';
 
 export const bankingRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -171,6 +172,25 @@ bankingRouter.post('/transactions', requireRole(['admin', 'teller']), async (c) 
         .run();
     }
   }
+
+  // ─── FT-005: Event emission for all banking transactions ────────────────────
+  const eventType = body.type === 'deposit' || body.type === 'interest'
+    ? 'banking.deposit'
+    : body.type === 'withdrawal'
+      ? 'banking.withdrawal'
+      : 'banking.transfer';
+
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: eventType as 'banking.deposit' | 'banking.withdrawal' | 'banking.transfer',
+    transactionId: id,
+    tenantId,
+    accountId: body.accountId,
+    customerId: account.customerId as string,
+    amountKobo: body.amountKobo,
+    reference,
+    description: body.description,
+    occurredAt: createdAt,
+  });
 
   return c.json({
     success: true,

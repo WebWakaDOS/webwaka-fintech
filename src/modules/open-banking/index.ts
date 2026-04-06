@@ -27,6 +27,14 @@
 import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, OpenBankingScope } from '../../core/types';
+import { publishEvent } from '../../core/events';
+import {
+  exchangeToken,
+  getAccountDetails,
+  getAccountBalance,
+  getTransactions,
+  type MonoConfig,
+} from '../../core/mono';
 
 export const openBankingRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -267,3 +275,238 @@ async function hashKey(key: string): Promise<string> {
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
+
+// ─── FT-009: Mono Open Banking Integration ────────────────────────────────────
+//
+// Mono enables Nigerian banks' account linking via OAuth consent.
+// Flow:
+//   1. POST /api/open-banking/mono/consent       → redirect to Mono Connect widget
+//   2. POST /api/open-banking/mono/exchange       → exchange mono code → accountId, store account
+//   3. GET  /api/open-banking/mono/accounts       → list linked external accounts
+//   4. GET  /api/open-banking/mono/accounts/:id/balance       → current balance
+//   5. GET  /api/open-banking/mono/accounts/:id/transactions  → transaction history
+//   6. DELETE /api/open-banking/mono/accounts/:id             → unlink account
+
+function monoCredsFromEnv(env: Bindings): MonoConfig {
+  if (!env.MONO_SECRET_KEY) throw new Error('MONO_SECRET_KEY is not configured');
+  return { secretKey: env.MONO_SECRET_KEY };
+}
+
+// POST /api/open-banking/mono/consent — Return a Mono Connect link
+openBankingRouter.post('/mono/consent', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  if (!c.env.MONO_SECRET_KEY) {
+    return c.json({ error: 'Mono open banking is not configured for this environment' }, 503);
+  }
+
+  const body = await c.req.json<{ customerId: string; redirectUrl?: string }>();
+  if (!body.customerId) return c.json({ error: 'customerId is required' }, 400);
+
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const now = new Date().toISOString();
+  const consentId = crypto.randomUUID();
+
+  // Store pending consent record
+  await c.env.DB.prepare(
+    `INSERT INTO monoConsents (id, tenantId, customerId, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, 'pending', ?, ?)`
+  )
+    .bind(consentId, tenantId, body.customerId, now, now)
+    .run();
+
+  // Mono Connect URL — customer opens this in a webview or browser
+  const connectUrl = `https://connect.mono.co/?key=${c.env.MONO_SECRET_KEY}&scope=accounts&session_id=${consentId}`;
+
+  return c.json({ consentId, connectUrl, message: 'Open the connectUrl in a browser or webview to link a bank account.' });
+});
+
+// POST /api/open-banking/mono/exchange — Exchange Mono code for account
+openBankingRouter.post('/mono/exchange', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  if (!c.env.MONO_SECRET_KEY) {
+    return c.json({ error: 'Mono open banking is not configured for this environment' }, 503);
+  }
+
+  const body = await c.req.json<{ customerId: string; code: string; consentId?: string }>();
+  if (!body.customerId || !body.code) {
+    return c.json({ error: 'customerId and code are required' }, 400);
+  }
+
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const creds = monoCredsFromEnv(c.env);
+
+  // Exchange code for Mono accountId
+  const tokenResult = await exchangeToken(creds, body.code);
+  const monoAccountId = tokenResult.id;
+
+  // Fetch account details (getAccountDetails returns the account directly)
+  const account = await getAccountDetails(creds, monoAccountId);
+
+  const now = new Date().toISOString();
+  const externalAccountId = crypto.randomUUID();
+
+  // Store linked external account
+  await c.env.DB.prepare(
+    `INSERT INTO externalBankAccounts
+       (id, tenantId, customerId, provider, providerAccountId, bankName, accountName,
+        accountNumber, currency, balanceMinorUnits, lastSyncAt, status, createdAt, updatedAt)
+     VALUES (?, ?, ?, 'mono', ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?)`
+  )
+    .bind(
+      externalAccountId,
+      tenantId,
+      body.customerId,
+      monoAccountId,
+      account.institution.name,
+      account.name,
+      account.accountNumber,
+      account.currency,
+      account.balance,
+      now,
+      now,
+      now,
+    )
+    .run();
+
+  // Update consent to active if consentId was provided
+  if (body.consentId) {
+    await c.env.DB.prepare(
+      `UPDATE monoConsents SET monoAccountId = ?, status = 'active', updatedAt = ? WHERE id = ? AND tenantId = ?`
+    )
+      .bind(monoAccountId, now, body.consentId, tenantId)
+      .run();
+  }
+
+  // FT-005: Emit open_banking.account_linked event
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'open_banking.account_linked',
+    consentId: body.consentId ?? externalAccountId,
+    externalAccountId,
+    tenantId,
+    customerId: body.customerId,
+    bankName: account.institution.name,
+    currency: account.currency,
+    occurredAt: now,
+  });
+
+  return c.json({
+    externalAccountId,
+    bankName: account.institution.name,
+    accountName: account.name,
+    accountNumber: account.accountNumber,
+    currency: account.currency,
+    balanceMinorUnits: account.balance,
+  }, 201);
+});
+
+// GET /api/open-banking/mono/accounts — List linked external accounts
+openBankingRouter.get('/mono/accounts', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const customerId = c.req.query('customerId');
+
+  if (user.role === 'customer' && user.userId !== customerId) {
+    return c.json({ error: 'Forbidden' }, 403);
+  }
+
+  let query = `SELECT * FROM externalBankAccounts WHERE tenantId = ? AND provider = 'mono' AND status = 'active'`;
+  const params: string[] = [tenantId];
+  if (customerId) {
+    query += ' AND customerId = ?';
+    params.push(customerId);
+  }
+  query += ' ORDER BY createdAt DESC';
+
+  const { results } = await c.env.DB.prepare(query).bind(...params).all();
+  return c.json({ data: results });
+});
+
+// GET /api/open-banking/mono/accounts/:id/balance — Live balance from Mono
+openBankingRouter.get('/mono/accounts/:id/balance', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const id = c.req.param('id');
+
+  if (!c.env.MONO_SECRET_KEY) {
+    return c.json({ error: 'Mono open banking is not configured' }, 503);
+  }
+
+  const record = await c.env.DB.prepare(
+    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+  )
+    .bind(id, tenantId)
+    .first() as Record<string, unknown> | null;
+
+  if (!record) return c.json({ error: 'External account not found' }, 404);
+  if (user.role === 'customer' && record.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
+
+  const creds = monoCredsFromEnv(c.env);
+  const balanceResult = await getAccountBalance(creds, record.providerAccountId as string);
+  const now = new Date().toISOString();
+
+  // Update cached balance
+  await c.env.DB.prepare(
+    `UPDATE externalBankAccounts SET balanceMinorUnits = ?, lastSyncAt = ?, updatedAt = ? WHERE id = ?`
+  )
+    .bind(balanceResult.balance, now, now, id)
+    .run();
+
+  return c.json({
+    externalAccountId: id,
+    currency: record.currency,
+    balanceMinorUnits: balanceResult.balance,
+    syncedAt: now,
+  });
+});
+
+// GET /api/open-banking/mono/accounts/:id/transactions — Transaction history
+openBankingRouter.get('/mono/accounts/:id/transactions', requireRole(['admin', 'teller', 'customer']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const id = c.req.param('id');
+  const start = c.req.query('start');
+  const end = c.req.query('end');
+
+  if (!c.env.MONO_SECRET_KEY) {
+    return c.json({ error: 'Mono open banking is not configured' }, 503);
+  }
+
+  const record = await c.env.DB.prepare(
+    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+  )
+    .bind(id, tenantId)
+    .first() as Record<string, unknown> | null;
+
+  if (!record) return c.json({ error: 'External account not found' }, 404);
+  if (user.role === 'customer' && record.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
+
+  const creds = monoCredsFromEnv(c.env);
+  const txResult = await getTransactions(creds, record.providerAccountId as string, { start, end });
+
+  return c.json({ data: txResult.transactions, total: txResult.total });
+});
+
+// DELETE /api/open-banking/mono/accounts/:id — Unlink external account
+openBankingRouter.delete('/mono/accounts/:id', requireRole(['admin', 'customer']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const id = c.req.param('id');
+
+  const record = await c.env.DB.prepare(
+    `SELECT * FROM externalBankAccounts WHERE id = ? AND tenantId = ? AND provider = 'mono'`
+  )
+    .bind(id, tenantId)
+    .first() as Record<string, unknown> | null;
+
+  if (!record) return c.json({ error: 'External account not found' }, 404);
+  if (user.role === 'customer' && record.customerId !== user.userId) return c.json({ error: 'Forbidden' }, 403);
+
+  const now = new Date().toISOString();
+  await c.env.DB.prepare(
+    `UPDATE externalBankAccounts SET status = 'unlinked', updatedAt = ? WHERE id = ? AND tenantId = ?`
+  )
+    .bind(now, id, tenantId)
+    .run();
+
+  return c.json({ success: true, message: 'External bank account unlinked.' });
+});

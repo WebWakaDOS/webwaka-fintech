@@ -96,6 +96,30 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     return c.json({ error: 'destinationBankCode must be a 3–6 digit CBN bank code' }, 400);
   }
 
+  // ─── FT-001: Idempotency key check ────────────────────────────────────────
+  // If the caller provides X-Idempotency-Key, return the existing payout if it
+  // was previously initiated with the same key within the last 24 hours.
+  const idempotencyKey = c.req.header('X-Idempotency-Key');
+  if (idempotencyKey) {
+    const existing = await c.env.DB.prepare(
+      `SELECT payoutRequestId FROM payoutIdempotencyKeys WHERE tenantId = ? AND idempotencyKey = ? AND expiresAt > ?`
+    )
+      .bind(tenantId, idempotencyKey, new Date().toISOString())
+      .first() as Record<string, string> | null;
+
+    if (existing) {
+      const payout = await c.env.DB.prepare(
+        'SELECT * FROM payoutRequests WHERE id = ? AND tenantId = ?'
+      )
+        .bind(existing.payoutRequestId, tenantId)
+        .first();
+
+      if (payout) {
+        return c.json({ data: payout, idempotent: true }, 200);
+      }
+    }
+  }
+
   // QA-FIN-1: Pre-flight balance check and deduction when a source account is supplied
   if (sourceAccountId) {
     const srcAccount = await c.env.DB.prepare(
@@ -200,6 +224,17 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
       .bind(transfer.sessionId, now, id, tenantId)
       .run();
 
+    // FT-001: Store idempotency key (24-hour TTL) to enable safe retries
+    if (idempotencyKey) {
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      await c.env.DB.prepare(
+        `INSERT OR IGNORE INTO payoutIdempotencyKeys (id, tenantId, idempotencyKey, payoutRequestId, createdAt, expiresAt)
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+        .bind(crypto.randomUUID(), tenantId, idempotencyKey, id, now, expiresAt)
+        .run();
+    }
+
     return c.json({
       success: true,
       id,
@@ -230,6 +265,31 @@ payoutsRouter.post('/initiate', requireRole(['admin']), async (c) => {
     console.error('[Payouts] Initiation error:', err);
     return c.json({ error: reason }, 500);
   }
+});
+
+// ─── GET /api/payouts/reconcile — FT-001 Reconciliation scan ─────────────────
+// Returns all payouts in 'processing' status that are older than 10 minutes
+// so operators can trigger manual status refresh or escalate to NIBSS support.
+payoutsRouter.get('/reconcile', requireRole(['admin']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+  const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+
+  const { results } = await c.env.DB.prepare(
+    `SELECT * FROM payoutRequests
+     WHERE tenantId = ? AND status = 'processing' AND createdAt <= ?
+     ORDER BY createdAt ASC LIMIT 50`
+  )
+    .bind(tenantId, tenMinutesAgo)
+    .all();
+
+  return c.json({
+    data: results,
+    count: results.length,
+    message: results.length > 0
+      ? `${results.length} payouts are in 'processing' and may need manual reconciliation.`
+      : 'No stuck payouts found.',
+  });
 });
 
 // ─── GET /api/payouts ─────────────────────────────────────────────────────────

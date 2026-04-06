@@ -18,6 +18,7 @@
 import { Hono, type Context } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, WalletCurrency } from '../../core/types';
+import { publishEvent } from '../../core/events';
 
 export const walletsRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -108,6 +109,20 @@ walletsRouter.post('/:id/fund', requireRole(['admin', 'teller']), async (c) => {
     .run();
 
   const newBalance = Number(wallet.balanceMinorUnits) + body.amountMinorUnits;
+
+  // FT-005: Emit wallet.funded event
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'wallet.funded',
+    walletId: id,
+    tenantId,
+    customerId: wallet.customerId as string,
+    currency: wallet.currency as string,
+    amountMinorUnits: body.amountMinorUnits,
+    newBalanceMinorUnits: newBalance,
+    description: body.description,
+    occurredAt: now,
+  });
+
   return c.json({ success: true, currency: wallet.currency, newBalanceMinorUnits: newBalance });
 });
 
@@ -136,7 +151,22 @@ walletsRouter.post('/:id/debit', requireRole(['admin', 'teller']), async (c) => 
     .bind(body.amountMinorUnits, now, id, tenantId)
     .run();
 
-  return c.json({ success: true, currency: wallet.currency, newBalanceMinorUnits: Number(wallet.balanceMinorUnits) - body.amountMinorUnits });
+  const newDebitBalance = Number(wallet.balanceMinorUnits) - body.amountMinorUnits;
+
+  // FT-005: Emit wallet.debited event
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'wallet.debited',
+    walletId: id,
+    tenantId,
+    customerId: wallet.customerId as string,
+    currency: wallet.currency as string,
+    amountMinorUnits: body.amountMinorUnits,
+    newBalanceMinorUnits: newDebitBalance,
+    description: body.description,
+    occurredAt: now,
+  });
+
+  return c.json({ success: true, currency: wallet.currency, newBalanceMinorUnits: newDebitBalance });
 });
 
 walletsRouter.post('/convert', requireRole(['admin', 'teller', 'customer']), async (c) => {
@@ -186,6 +216,19 @@ walletsRouter.post('/convert', requireRole(['admin', 'teller', 'customer']), asy
       'UPDATE multiCurrencyWallets SET balanceMinorUnits = balanceMinorUnits + ?, updatedAt = ? WHERE id = ? AND tenantId = ?'
     ).bind(toAmount, now, toWallet.id as string, tenantId),
   ]);
+
+  // FT-005: Emit wallet.converted event
+  await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+    event: 'wallet.converted',
+    tenantId,
+    customerId: body.customerId,
+    fromCurrency: body.fromCurrency,
+    toCurrency: body.toCurrency,
+    fromAmountMinorUnits: body.fromAmountMinorUnits,
+    toAmountMinorUnits: toAmount,
+    exchangeRate: body.exchangeRate,
+    occurredAt: now,
+  });
 
   return c.json({
     success: true,

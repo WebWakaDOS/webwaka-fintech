@@ -64,6 +64,81 @@ export async function verifyPayment(secretKey: string, reference: string): Promi
   return response.json() as Promise<PaystackVerifyResponse>;
 }
 
+export interface PaystackRefundResponse {
+  status: boolean;
+  message: string;
+  data: {
+    transaction: { id: number; reference: string; amount: number };
+    dispute?: { id: number };
+    refund: { id: number; amount: number; currency: string; status: string };
+  };
+}
+
+export interface PaystackWebhookEvent {
+  event: string;
+  data: Record<string, unknown>;
+}
+
+/**
+ * Process a refund for a previously successful Paystack transaction.
+ *
+ * @param secretKey    Paystack secret key
+ * @param reference    Original transaction reference
+ * @param amountKobo   Amount to refund in kobo. Omit to refund full amount.
+ * @param merchantNote Optional merchant note explaining the refund
+ */
+export async function refundPayment(
+  secretKey: string,
+  reference: string,
+  amountKobo?: number,
+  merchantNote?: string,
+): Promise<PaystackRefundResponse> {
+  const body: Record<string, unknown> = { transaction: reference };
+  if (amountKobo !== undefined) body.amount = amountKobo;
+  if (merchantNote) body.merchant_note = merchantNote;
+
+  const response = await fetch('https://api.paystack.co/refund', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${secretKey}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({})) as { message?: string };
+    throw new Error(`Paystack refund failed (${response.status}): ${err.message ?? 'Unknown'}`);
+  }
+  return response.json() as Promise<PaystackRefundResponse>;
+}
+
+/**
+ * Verify a Paystack webhook request using HMAC-SHA256 signature.
+ * The signature is in the 'x-paystack-signature' header.
+ *
+ * @returns true if the signature matches, false otherwise
+ */
+export async function verifyPaystackWebhook(
+  rawBody: string,
+  signature: string,
+  secretKey: string,
+): Promise<boolean> {
+  try {
+    const encoder = new TextEncoder();
+    const key = await crypto.subtle.importKey(
+      'raw',
+      encoder.encode(secretKey),
+      { name: 'HMAC', hash: 'SHA-512' },
+      false,
+      ['sign'],
+    );
+    const sigBuffer = await crypto.subtle.sign('HMAC', key, encoder.encode(rawBody));
+    const computed = Array.from(new Uint8Array(sigBuffer))
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    return computed === signature;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Generate a unique Paystack payment reference for fintech transactions.
  * Format: FIN-{tenantId}-{timestamp}-{random}

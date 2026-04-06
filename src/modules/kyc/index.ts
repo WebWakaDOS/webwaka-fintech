@@ -17,6 +17,8 @@ import { Hono } from 'hono';
 import { requireRole } from '@webwaka/core';
 import type { Bindings, AppVariables, KycTier } from '../../core/types';
 import { KYC_TIER_LIMITS } from '../../core/types';
+import { verifyIdentity, type DojahVerifyParams } from '../../core/dojah';
+import { publishEvent } from '../../core/events';
 
 export const kycRouter = new Hono<{ Bindings: Bindings; Variables: AppVariables }>();
 
@@ -142,6 +144,92 @@ kycRouter.get('/:customerId/limits', requireRole(['admin', 'teller', 'customer']
   }
 
   return c.json({ data: row });
+});
+
+// ─── FT-003: POST /api/kyc/verify — Secondary identity verification via DOJAH ─
+//
+// Verifies a customer's identity using DOJAH as the secondary KYC provider.
+// Results are stored in `kycVerifications` for audit trail.
+// Emits a `kyc.verified` event on success.
+//
+// Supported types: bvn | nin | phone | passport | drivers_license
+//
+kycRouter.post('/verify', requireRole(['admin', 'teller']), async (c) => {
+  const user = c.get('user');
+  const tenantId = user.tenantId;
+
+  if (!c.env.DOJAH_APP_ID || !c.env.DOJAH_PRIVATE_KEY) {
+    return c.json({ error: 'Secondary KYC provider (DOJAH) is not configured' }, 503);
+  }
+
+  const body = await c.req.json<{
+    customerId: string;
+    verificationType: 'bvn' | 'nin' | 'phone' | 'passport' | 'drivers_license';
+    value: string;
+    firstName?: string;
+    lastName?: string;
+    dateOfBirth?: string;
+  }>();
+
+  if (!body.customerId || !body.verificationType || !body.value) {
+    return c.json({ error: 'customerId, verificationType, and value are required' }, 400);
+  }
+
+  const params: DojahVerifyParams = {
+    type: body.verificationType,
+    value: body.value,
+    firstName: body.firstName,
+    lastName: body.lastName,
+    dateOfBirth: body.dateOfBirth,
+  };
+
+  const now = new Date().toISOString();
+  const verificationId = crypto.randomUUID();
+
+  let verificationStatus = 'failed';
+  let responseData: Record<string, unknown> = {};
+
+  try {
+    const result = await verifyIdentity(
+      { appId: c.env.DOJAH_APP_ID, privateKey: c.env.DOJAH_PRIVATE_KEY, mode: c.env.DOJAH_MODE as 'sandbox' | 'production' | undefined },
+      params,
+    );
+    verificationStatus = result.entity?.isMatch ? 'verified' : 'mismatch';
+    responseData = result.entity as unknown as Record<string, unknown>;
+  } catch (err) {
+    verificationStatus = 'error';
+    responseData = { error: err instanceof Error ? err.message : 'DOJAH request failed' };
+  }
+
+  // Store verification record for audit trail
+  await c.env.DB.prepare(
+    `INSERT INTO kycVerifications
+       (id, tenantId, customerId, verificationType, provider, status, responseData, createdAt)
+     VALUES (?, ?, ?, ?, 'dojah', ?, ?, ?)`
+  )
+    .bind(verificationId, tenantId, body.customerId, body.verificationType, verificationStatus, JSON.stringify(responseData), now)
+    .run();
+
+  // FT-005: Emit kyc.verified event on successful verification
+  if (verificationStatus === 'verified') {
+    await publishEvent(c.env.EVENT_BUS_URL, c.env.EVENT_BUS_SECRET, {
+      event: 'kyc.verified',
+      verificationId,
+      tenantId,
+      customerId: body.customerId,
+      verificationType: body.verificationType,
+      provider: 'dojah',
+      occurredAt: now,
+    });
+  }
+
+  return c.json({
+    verificationId,
+    status: verificationStatus,
+    verificationType: body.verificationType,
+    customerId: body.customerId,
+    ...(verificationStatus === 'error' ? { error: (responseData as { error?: string }).error } : {}),
+  }, verificationStatus === 'verified' ? 200 : verificationStatus === 'error' ? 502 : 422);
 });
 
 /**
